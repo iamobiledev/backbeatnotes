@@ -1,18 +1,34 @@
 #!/usr/bin/env python3
-"""Simulate Slack requests against the local app + stub, and assert behavior."""
-import hashlib, hmac, json, subprocess, time, urllib.parse, urllib.request
+"""Simulate Slack requests against the local app + stub, and assert behavior.
 
-APP = "http://localhost:3000"
-STUB = "http://localhost:4571"
-SECRET = "stub-signing-secret-for-local-tests"
+Prerequisites:
+  1. Local Postgres seeded via `pnpm db:seed` (needs the 'My Workspace'
+     demo workspace and a 'Welcome…' doc).
+  2. A slack_connections row for team T_TEST and a slack_user_links row
+     mapping the demo user to U_DEMO (see README → Slack integration).
+  3. The stub running:      node scripts/slack-stub.mjs
+  4. The app running with:  SLACK_API_BASE=http://localhost:4571 and
+     SLACK_SIGNING_SECRET matching SLACK_SIM_SIGNING_SECRET below.
+
+Usage: python3 scripts/slack-sim.py
+"""
+import hashlib, hmac, json, os, subprocess, time, urllib.parse, urllib.request
+
+APP = os.environ.get("SLACK_SIM_APP", "http://localhost:3000")
+STUB = os.environ.get("SLACK_SIM_STUB", "http://localhost:4571")
+SECRET = os.environ.get(
+    "SLACK_SIM_SIGNING_SECRET", "stub-signing-secret-for-local-tests"
+)
 TEAM = "T_TEST"
 import random
 NONCE = f"{random.randrange(16**8):08x}"
 
+DB_URL = os.environ.get(
+    "SLACK_SIM_DATABASE_URL", "postgresql://docloom:docloom@localhost:5432/docloom"
+)
+
 def psql(q):
-    out = subprocess.run(
-        ["psql", "postgresql://docloom:docloom@localhost:5432/docloom", "-tAc", q],
-        capture_output=True, text=True)
+    out = subprocess.run(["psql", DB_URL, "-tAc", q], capture_output=True, text=True)
     return out.stdout.strip()
 
 WS = psql("SELECT id FROM workspaces WHERE is_personal=false AND name='My Workspace' LIMIT 1")
