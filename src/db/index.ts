@@ -1,21 +1,18 @@
 import "server-only";
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
-import * as schema from "./schema";
 import { getServerEnv } from "@/env/server";
+import { createDatabase, type Database } from "./create-db";
 
 /**
- * Neon HTTP + Drizzle connection helper for Vercel Functions.
- * Uses the pooled DATABASE_URL. Do not open unnecessary connections —
- * neon() creates a lightweight HTTP client suitable for serverless.
+ * Drizzle connection helper.
+ * - Neon HTTP driver for Neon URLs (Vercel Functions — no persistent sockets).
+ * - node-postgres for local/loopback URLs (development & CI).
  */
 function createDb() {
   const { DATABASE_URL } = getServerEnv();
-  const sql = neon(DATABASE_URL);
-  return drizzle(sql, { schema });
+  return createDatabase(DATABASE_URL);
 }
 
-export type Database = ReturnType<typeof createDb>;
+export type { Database };
 
 const globalForDb = globalThis as unknown as { __docloomDb?: Database };
 

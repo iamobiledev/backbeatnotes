@@ -1,9 +1,9 @@
-import "dotenv/config";
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import { config as loadEnv } from "dotenv";
+loadEnv({ path: [".env.local", ".env"], quiet: true });
 import { hashPassword } from "better-auth/crypto";
 import { nanoid } from "nanoid";
 import * as schema from "../src/db/schema";
+import { createDatabase } from "../src/db/create-db";
 import { brand } from "../src/config/brand";
 
 /**
@@ -26,8 +26,7 @@ async function main() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is required");
 
-  const sql = neon(url);
-  const db = drizzle(sql, { schema });
+  const db = createDatabase(url);
 
   const email = process.env.SEED_USER_EMAIL ?? "demo@docloom.local";
   const password = process.env.SEED_USER_PASSWORD ?? "DocloomDemo123!";
@@ -119,7 +118,9 @@ async function main() {
   console.log(`  Password: ${password}`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
