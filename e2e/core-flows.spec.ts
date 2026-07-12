@@ -146,7 +146,8 @@ test.describe.serial("core flows", () => {
       { timeout: 15_000 },
     );
     const childUrl = page.url();
-    await expect(page.getByLabel("Document title")).toHaveValue("Untitled");
+    // New pages open with an empty title + "New page" placeholder.
+    await expect(page.getByLabel("Document title")).toHaveValue("");
 
     // Rename the child, then confirm the parent's link text follows.
     await page.getByLabel("Document title").fill(`Chapter One ${runId}`);

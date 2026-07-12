@@ -84,14 +84,17 @@ export function DocumentEditor({
   readOnly = false,
 }: DocumentEditorProps) {
   const router = useRouter();
-  const [title, setTitle] = useState(initialTitle);
+  // Fresh pages start with an empty title + "New page" placeholder (Notion
+  // behavior) instead of prefilled "Untitled" text the user has to clear.
+  const startingTitle = initialTitle === "Untitled" ? "" : initialTitle;
+  const [title, setTitle] = useState(startingTitle);
   const [status, setStatus] = useState<SaveStatus>("saved");
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Mutable save-machine state (only touched from handlers/effects).
-  const titleRef = useRef(initialTitle);
+  const titleRef = useRef(startingTitle);
   const statusRef = useRef<SaveStatus>("saved");
   const savingRef = useRef(false);
   const dirtyAgainRef = useRef(false);

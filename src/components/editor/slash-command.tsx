@@ -75,7 +75,7 @@ const GROUPS: SlashCommandGroup[] = [
       {
         title: "Heading 2",
         description: "Medium section heading.",
-        searchTerms: ["h2", "subtitle", "medium"],
+        searchTerms: ["h2", "medium"],
         icon: Heading2,
         command: ({ editor, range }) =>
           editor
@@ -88,7 +88,7 @@ const GROUPS: SlashCommandGroup[] = [
       {
         title: "Heading 3",
         description: "Small section heading.",
-        searchTerms: ["h3", "subheading", "small"],
+        searchTerms: ["h3", "small"],
         icon: Heading3,
         command: ({ editor, range }) =>
           editor
