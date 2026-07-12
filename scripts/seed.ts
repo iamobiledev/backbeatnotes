@@ -113,9 +113,35 @@ async function main() {
     console.log("Created welcome document");
   }
 
+  // A second verified user with no membership in the demo workspace —
+  // useful for testing permissions locally (request access, private docs).
+  const outsiderEmail =
+    process.env.SEED_OUTSIDER_EMAIL ?? "teammate@docloom.local";
+  const existingOutsider = await db.query.user.findFirst({
+    where: (u, { eq }) => eq(u.email, outsiderEmail),
+  });
+  if (!existingOutsider) {
+    const outsiderId = nanoid();
+    await db.insert(schema.user).values({
+      id: outsiderId,
+      name: "Taylor Teammate",
+      email: outsiderEmail,
+      emailVerified: true,
+    });
+    await db.insert(schema.account).values({
+      id: nanoid(),
+      accountId: outsiderId,
+      providerId: "credential",
+      userId: outsiderId,
+      password: await hashPassword(password),
+    });
+    console.log(`Created user ${outsiderEmail} (no workspace membership)`);
+  }
+
   console.log("\nSeed complete.");
   console.log(`  Email:    ${email}`);
   console.log(`  Password: ${password}`);
+  console.log(`  Outsider: ${outsiderEmail} (same password)`);
 }
 
 main()

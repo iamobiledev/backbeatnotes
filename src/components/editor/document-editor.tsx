@@ -557,6 +557,8 @@ function ToolbarButton({
           type="button"
           aria-label={label}
           aria-pressed={active}
+          // Keep focus (and selection) in the editor while clicking.
+          onMouseDown={(event) => event.preventDefault()}
           onClick={onClick}
           disabled={disabled}
           className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:pointer-events-none disabled:opacity-40 ${
