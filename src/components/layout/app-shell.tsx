@@ -8,10 +8,13 @@ import {
   BookLock,
   BookOpen,
   ChevronsUpDown,
+  Home,
   Menu,
   Plus,
   Search,
   Settings,
+  SquarePen,
+  Star,
   Trash2,
   LogOut,
   Keyboard,
@@ -32,7 +35,7 @@ import {
   DialogContent,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { signOut } from "@/lib/auth-client";
 import { actionCreateDocument } from "@/app/actions";
 import type { DocumentTreeNode, WorkspaceSummary } from "@/lib/documents/types";
@@ -116,90 +119,81 @@ export function AppShell({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [createPage]);
 
-  const sidebar = (
-    <div className="flex h-full flex-col">
-      <WorkspaceSwitcher
-        current={workspace}
-        workspaces={workspaces}
-        canCreateWorkspace={platformRole === "admin"}
-      />
+  const isHome = pathname === `/app/${workspace.id}`;
 
-      <div className="mt-4 px-2">
-        <button
-          type="button"
-          onClick={() => {
-            const event = new CustomEvent("docloom:open-search");
-            window.dispatchEvent(event);
-          }}
-          className="flex w-full items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-        >
-          <Search className="h-4 w-4" />
-          <span>Search…</span>
-          <kbd className="ml-auto rounded border border-[var(--border)] bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium">
-            ⌘K
-          </kbd>
-        </button>
+  const sidebar = (
+    <div className="flex h-full flex-col text-sm">
+      <div className="flex items-center gap-1 px-2">
+        <WorkspaceSwitcher
+          current={workspace}
+          workspaces={workspaces}
+          canCreateWorkspace={platformRole === "admin"}
+        />
+        {canEditDocs && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="New page"
+                disabled={creating}
+                onClick={() => createPage()}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--sidebar-hover)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+              >
+                <SquarePen className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>New page (N)</TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
-      {canEditDocs && (
-        <div className="mt-2 flex items-center gap-1 px-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="flex-1 justify-start gap-2 text-[var(--primary)]"
-            onClick={() => createPage()}
-            disabled={creating}
-          >
-            <Plus className="h-4 w-4" />
-            New page
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-[var(--muted-foreground)]"
-                aria-label="More page types"
-                disabled={creating}
-              >
-                <ChevronsUpDown className="h-3.5 w-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuItem onSelect={() => createPage(undefined, "doc")}>
-                <Plus className="h-4 w-4" />
-                New page
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => createPage(undefined, "wiki")}>
-                <BookOpen className="h-4 w-4" />
-                New wiki
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      )}
+      <div className="mt-1 space-y-px px-2">
+        <SidebarItem
+          icon={<Search className="h-4 w-4" />}
+          label="Search"
+          trailing={
+            <kbd className="text-[11px] text-[var(--muted-foreground)]">⌘K</kbd>
+          }
+          onClick={() =>
+            window.dispatchEvent(new CustomEvent("docloom:open-search"))
+          }
+        />
+        <SidebarItem
+          icon={<Home className="h-4 w-4" />}
+          label="Home"
+          href={`/app/${workspace.id}`}
+          active={isHome}
+        />
+        <SidebarItem
+          icon={<Settings className="h-4 w-4" />}
+          label="Settings"
+          href={`/app/${workspace.id}/settings`}
+          active={pathname?.endsWith("/settings")}
+        />
+      </div>
 
       <nav
         aria-label="Documents"
-        className="mt-4 flex-1 space-y-6 overflow-y-auto px-2 pb-6"
+        className="mt-4 flex-1 space-y-4 overflow-y-auto px-2 pb-4"
       >
         {favorites.length > 0 && (
           <div>
-            <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+            <p className="mb-0.5 px-2 py-1 text-xs font-medium text-[var(--muted-foreground)]">
               Favorites
             </p>
-            <ul>
+            <ul className="space-y-px">
               {favorites.map((fav) => (
                 <li key={fav.id}>
                   <Link
                     href={`/app/${workspace.id}/docs/${fav.id}`}
-                    className={`block truncate rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-[var(--muted)] ${
+                    className={`flex items-center gap-1.5 rounded-md px-2 py-1 font-medium transition-colors hover:bg-[var(--sidebar-hover)] ${
                       pathname?.endsWith(`/docs/${fav.id}`)
-                        ? "bg-[var(--muted)] font-medium"
-                        : ""
+                        ? "bg-[var(--sidebar-active)] text-[var(--foreground)]"
+                        : "text-[var(--muted-foreground)]"
                     }`}
                   >
-                    ★ <span className="ml-1">{fav.title || "Untitled"}</span>
+                    <Star className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{fav.title || "Untitled"}</span>
                   </Link>
                 </li>
               ))}
@@ -207,14 +201,40 @@ export function AppShell({
           </div>
         )}
 
-        <div>
-          <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-            Pages
-          </p>
+        <div className="group/section">
+          <div className="mb-0.5 flex items-center justify-between px-2 py-1">
+            <p className="text-xs font-medium text-[var(--muted-foreground)]">
+              {workspace.isPersonal ? "Private" : "Pages"}
+            </p>
+            {canEditDocs && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Add a page"
+                    disabled={creating}
+                    className="flex h-5 w-5 items-center justify-center rounded text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[var(--sidebar-hover)] focus-visible:opacity-100 focus-visible:outline-none group-hover/section:opacity-100"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48">
+                  <DropdownMenuItem onSelect={() => createPage(undefined, "doc")}>
+                    <Plus className="h-4 w-4" />
+                    New page
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => createPage(undefined, "wiki")}>
+                    <BookOpen className="h-4 w-4" />
+                    New wiki
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
           {tree.length === 0 ? (
-            <p className="px-2 py-1 text-sm text-[var(--muted-foreground)]">
+            <p className="px-2 py-1 text-[var(--muted-foreground)]">
               No pages yet.
-              {canEditDocs && " Press N or click New page to start writing."}
+              {canEditDocs && " Press N to start writing."}
             </p>
           ) : (
             <DocumentTree
@@ -224,28 +244,27 @@ export function AppShell({
               onCreateChild={canEditDocs ? createPage : undefined}
             />
           )}
+          {canEditDocs && (
+            <button
+              type="button"
+              onClick={() => createPage()}
+              disabled={creating}
+              className="mt-px flex w-full items-center gap-1.5 rounded-md px-2 py-1 font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0" />
+              New page
+            </button>
+          )}
         </div>
       </nav>
 
-      <div className="border-t border-[var(--border)] px-2 py-3">
-        <Link
+      <div className="space-y-px px-2 py-2">
+        <SidebarItem
+          icon={<Trash2 className="h-4 w-4" />}
+          label="Trash"
           href={`/app/${workspace.id}/trash`}
-          className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-[var(--muted)] ${
-            pathname?.endsWith("/trash") ? "bg-[var(--muted)] font-medium" : ""
-          }`}
-        >
-          <Trash2 className="h-4 w-4 text-[var(--muted-foreground)]" />
-          Trash
-        </Link>
-        <Link
-          href={`/app/${workspace.id}/settings`}
-          className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-[var(--muted)] ${
-            pathname?.endsWith("/settings") ? "bg-[var(--muted)] font-medium" : ""
-          }`}
-        >
-          <Settings className="h-4 w-4 text-[var(--muted-foreground)]" />
-          Settings
-        </Link>
+          active={pathname?.endsWith("/trash")}
+        />
       </div>
     </div>
   );
@@ -254,7 +273,7 @@ export function AppShell({
     <TooltipProvider delayDuration={300}>
       <div className="flex min-h-screen w-full">
         {/* Desktop sidebar */}
-        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-r border-[var(--border)] bg-[color-mix(in_oklab,var(--card)_88%,transparent)] py-4 md:block">
+        <aside className="sticky top-0 hidden h-screen w-60 shrink-0 border-r border-[var(--border)] bg-[var(--sidebar)] py-2 md:block">
           {sidebar}
         </aside>
 
@@ -262,7 +281,7 @@ export function AppShell({
         <Dialog open={drawerOpen} onOpenChange={setDrawerOpen}>
           <DialogContent
             hideClose
-            className="fixed inset-y-0 left-0 h-full w-72 max-w-[85vw] translate-x-0 translate-y-0 rounded-none border-y-0 border-l-0 p-0 py-4 top-0 data-[state=open]:animate-fade md:hidden"
+            className="fixed inset-y-0 left-0 h-full w-72 max-w-[85vw] translate-x-0 translate-y-0 rounded-none border-y-0 border-l-0 bg-[var(--sidebar)] p-0 py-2 top-0 data-[state=open]:animate-fade md:hidden"
             style={{ left: 0, top: 0, transform: "none" }}
             aria-describedby={undefined}
           >
@@ -281,30 +300,32 @@ export function AppShell({
         </Dialog>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-[var(--border)] bg-[color-mix(in_oklab,var(--background)_92%,transparent)] px-4 py-3 backdrop-blur md:px-6">
+          <header className="sticky top-0 z-10 flex h-11 items-center gap-2 bg-[color-mix(in_oklab,var(--background)_88%,transparent)] px-3 backdrop-blur md:px-4">
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 md:hidden"
+              className="h-8 w-8 md:hidden"
               onClick={() => setDrawerOpen(true)}
               aria-label="Open navigation"
             >
-              <Menu className="h-5 w-5" />
+              <Menu className="h-4 w-4" />
             </Button>
 
             <Link
               href={`/app/${workspace.id}`}
-              className="flex items-center gap-2 font-[family-name:var(--font-display)] text-lg font-semibold text-[var(--primary)]"
+              className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-sm font-medium transition-colors hover:bg-[var(--sidebar-hover)]"
             >
-              {workspace.isPersonal && <BookLock className="h-4 w-4" />}
+              {workspace.isPersonal && (
+                <BookLock className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)]" />
+              )}
               <span className="truncate">{workspace.name}</span>
             </Link>
 
-            <div className="ml-auto flex items-center gap-1.5">
+            <div className="ml-auto flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 md:hidden"
+                className="h-8 w-8 md:hidden"
                 aria-label="Search"
                 onClick={() =>
                   window.dispatchEvent(new CustomEvent("docloom:open-search"))
@@ -319,7 +340,7 @@ export function AppShell({
                     aria-label="Account menu"
                     className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
                   >
-                    <Avatar name={user.name} className="h-8 w-8 text-xs" />
+                    <Avatar name={user.name} className="h-7 w-7 text-xs" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
@@ -355,13 +376,54 @@ export function AppShell({
             </div>
           </header>
 
-          <main className="flex-1 px-4 py-6 md:px-8">{children}</main>
+          <main className="flex-1 px-4 py-4 md:px-8">{children}</main>
         </div>
       </div>
 
       <CommandPalette workspaceId={workspace.id} />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </TooltipProvider>
+  );
+}
+
+function SidebarItem({
+  icon,
+  label,
+  href,
+  active,
+  trailing,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  href?: string;
+  active?: boolean;
+  trailing?: React.ReactNode;
+  onClick?: () => void;
+}) {
+  const className = `flex w-full items-center gap-2 rounded-md px-2 py-1 font-medium transition-colors hover:bg-[var(--sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+    active
+      ? "bg-[var(--sidebar-active)] text-[var(--foreground)]"
+      : "text-[var(--muted-foreground)]"
+  }`;
+  const content = (
+    <>
+      <span className="shrink-0">{icon}</span>
+      <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+      {trailing}
+    </>
+  );
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {content}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} className={className}>
+      {content}
+    </button>
   );
 }
 
@@ -378,29 +440,26 @@ function WorkspaceSwitcher({
   const shared = workspaces.filter((w) => !w.isPersonal);
 
   return (
-    <div className="px-2">
+    <div className="min-w-0 flex-1">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
           >
             {current.isPersonal ? (
-              <BookLock className="h-4 w-4 shrink-0 text-[var(--primary)]" />
+              <span className="flex h-5.5 w-5.5 shrink-0 items-center justify-center rounded bg-[var(--sidebar-active)]">
+                <BookLock className="h-3.5 w-3.5 text-[var(--foreground)]" />
+              </span>
             ) : (
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-[var(--primary)] text-xs font-semibold text-[var(--primary-foreground)]">
+              <span className="flex h-5.5 w-5.5 shrink-0 items-center justify-center rounded bg-[var(--foreground)] text-xs font-semibold text-[var(--background)]">
                 {current.name[0]?.toUpperCase() ?? "W"}
               </span>
             )}
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-semibold">
-                {current.name}
-              </span>
-              <span className="block text-[11px] text-[var(--muted-foreground)]">
-                {brand.name}
-              </span>
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+              {current.name}
             </span>
-            <ChevronsUpDown className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
+            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)]" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-60">
@@ -426,7 +485,7 @@ function WorkspaceSwitcher({
           {shared.map((ws) => (
             <DropdownMenuItem key={ws.id} asChild>
               <Link href={`/app/${ws.id}`}>
-                <span className="flex h-5 w-5 items-center justify-center rounded bg-[var(--secondary)] text-[10px] font-semibold text-[var(--secondary-foreground)]">
+                <span className="flex h-5 w-5 items-center justify-center rounded bg-[var(--foreground)] text-[10px] font-semibold text-[var(--background)]">
                   {ws.name[0]?.toUpperCase() ?? "W"}
                 </span>
                 {ws.name}
@@ -437,13 +496,17 @@ function WorkspaceSwitcher({
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/app/new" className="text-[var(--primary)]">
+                <Link href="/app/new">
                   <Plus className="h-4 w-4" />
                   New workspace
                 </Link>
               </DropdownMenuItem>
             </>
           )}
+          <DropdownMenuSeparator />
+          <p className="px-2 py-1 text-[11px] text-[var(--muted-foreground)]">
+            {brand.name}
+          </p>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

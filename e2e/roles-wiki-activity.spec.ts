@@ -107,10 +107,8 @@ test.describe.serial("wikis, roles, activity, invitations", () => {
     await expect(
       page.getByText(/locked\. only admins can make changes/i),
     ).toBeVisible();
-    // No formatting toolbar and no lock menu item.
-    await expect(page.getByRole("toolbar", { name: "Formatting" })).toHaveCount(
-      0,
-    );
+    // Read-only: no editable title input and no lock menu item.
+    await expect(page.getByLabel("Document title")).toHaveCount(0);
     await page.getByRole("button", { name: "More actions" }).click();
     await expect(
       page.getByRole("menuitem", { name: /lock wiki|unlock wiki/i }),
@@ -130,9 +128,7 @@ test.describe.serial("wikis, roles, activity, invitations", () => {
     const memberPage = await memberContext.newPage();
     await signIn(memberPage, OUTSIDER_EMAIL);
     await memberPage.goto(wikiUrl);
-    await expect(
-      memberPage.getByRole("toolbar", { name: "Formatting" }),
-    ).toBeVisible();
+    await expect(memberPage.getByLabel("Document title")).toBeVisible();
     await memberContext.close();
   });
 

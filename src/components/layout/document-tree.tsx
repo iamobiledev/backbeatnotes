@@ -111,41 +111,50 @@ function TreeItem({
       aria-expanded={hasChildren ? isExpanded : undefined}
     >
       <div
-        className={`group flex items-center rounded-md pr-1 transition-colors hover:bg-[var(--muted)] ${
-          isActive ? "bg-[var(--muted)]" : ""
+        className={`group flex items-center rounded-md pr-1 transition-colors hover:bg-[var(--sidebar-hover)] ${
+          isActive ? "bg-[var(--sidebar-active)]" : ""
         }`}
-        style={{ paddingLeft: depth * 14 }}
+        style={{ paddingLeft: depth * 12 }}
       >
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-label={isExpanded ? "Collapse" : "Expand"}
-          onClick={() => hasChildren && onToggle(node.id)}
-          className={`flex h-6 w-5 shrink-0 items-center justify-center rounded text-[var(--muted-foreground)] ${
-            hasChildren
-              ? "hover:bg-[var(--border)]"
-              : "pointer-events-none opacity-0"
-          }`}
-        >
-          <ChevronRight
-            className={`h-3.5 w-3.5 transition-transform ${
-              isExpanded ? "rotate-90" : ""
+        {/* Notion-style: the page icon swaps to a toggle chevron on hover. */}
+        <span className="relative flex h-6 w-6 shrink-0 items-center justify-center">
+          <span
+            className={`pointer-events-none absolute inset-0 flex items-center justify-center ${
+              hasChildren ? "transition-opacity group-hover:opacity-0" : ""
             }`}
-          />
-        </button>
+          >
+            {node.icon ? (
+              <span className="text-sm leading-none">{node.icon}</span>
+            ) : node.docType === "wiki" ? (
+              <BookOpen className="h-4 w-4 text-[var(--muted-foreground)]" />
+            ) : (
+              <FileText className="h-4 w-4 text-[var(--muted-foreground)]" />
+            )}
+          </span>
+          {hasChildren && (
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={isExpanded ? "Collapse" : "Expand"}
+              onClick={() => onToggle(node.id)}
+              className="absolute inset-0.5 flex items-center justify-center rounded text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[rgba(55,53,47,0.12)] focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
+            >
+              <ChevronRight
+                className={`h-3.5 w-3.5 transition-transform ${
+                  isExpanded ? "rotate-90" : ""
+                }`}
+              />
+            </button>
+          )}
+        </span>
         <Link
           href={`/app/${workspaceId}/docs/${node.id}`}
-          className={`flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-sm ${
-            isActive ? "font-medium" : ""
+          className={`flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-0.5 text-sm font-medium ${
+            isActive
+              ? "text-[var(--foreground)]"
+              : "text-[var(--muted-foreground)]"
           }`}
         >
-          {node.icon ? (
-            <span className="shrink-0 text-sm leading-none">{node.icon}</span>
-          ) : node.docType === "wiki" ? (
-            <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--primary)]" />
-          ) : (
-            <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)]" />
-          )}
           <span className="truncate">{node.title || "Untitled"}</span>
           {node.locked && (
             <Lock
@@ -159,7 +168,7 @@ function TreeItem({
             type="button"
             aria-label={`Add page inside ${node.title || "Untitled"}`}
             onClick={() => onCreateChild(node.id)}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[var(--border)] focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[rgba(55,53,47,0.12)] focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>

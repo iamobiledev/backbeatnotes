@@ -1,6 +1,13 @@
 "use client";
 
-import { useEditor, EditorContent, type Editor } from "@tiptap/react";
+import {
+  useEditor,
+  useEditorState,
+  EditorContent,
+  isNodeSelection,
+  type Editor,
+} from "@tiptap/react";
+import { BubbleMenu } from "@tiptap/react/menus";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Image from "@tiptap/extension-image";
@@ -18,20 +25,13 @@ import {
   AlertCircle,
   Bold,
   Check,
-  CheckSquare,
+  ChevronDown,
   Code,
-  Heading1,
-  Heading2,
-  Heading3,
-  ImagePlus,
   Italic,
   Link2,
-  List,
-  ListOrdered,
   Loader2,
-  Quote,
-  Redo,
-  Undo,
+  Strikethrough,
+  Underline,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,10 +43,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { SlashCommand, IMAGE_REQUEST_EVENT } from "./slash-command";
 
 export type SaveStatus = "saved" | "saving" | "dirty" | "error";
 
@@ -98,7 +100,15 @@ export function DocumentEditor({
         link: false,
       }),
       Placeholder.configure({
-        placeholder: "Start writing — try headings, lists, code, or / images…",
+        // Notion-style: hint on the caret's empty line, not just the
+        // first line of the document.
+        placeholder: ({ node }) => {
+          if (node.type.name === "heading") {
+            return `Heading ${node.attrs.level as number}`;
+          }
+          return "Write, or press '/' for commands…";
+        },
+        showOnlyCurrent: true,
       }),
       Image.configure({ allowBase64: false }),
       Link.configure({
@@ -108,6 +118,7 @@ export function DocumentEditor({
       }),
       TaskList,
       TaskItem.configure({ nested: true }),
+      SlashCommand,
     ],
     content: initialContent,
     editable: !readOnly,
@@ -115,9 +126,30 @@ export function DocumentEditor({
     editorProps: {
       attributes: {
         class:
-          "prose prose-neutral max-w-none min-h-[50vh] focus:outline-none px-1",
+          "prose prose-neutral max-w-none min-h-[50vh] focus:outline-none px-1 pb-32",
         "aria-label": "Document content",
       },
+    },
+  });
+
+  // Re-render the bubble menu contents on selection/state changes —
+  // plain `editor.isActive(...)` reads during render would go stale.
+  const activeStates = useEditorState({
+    editor,
+    selector: ({ editor: e }) => {
+      if (!e) return null;
+      return {
+        bold: e.isActive("bold"),
+        italic: e.isActive("italic"),
+        underline: e.isActive("underline"),
+        strike: e.isActive("strike"),
+        code: e.isActive("code"),
+        link: e.isActive("link"),
+        turnIntoLabel: (
+          TURN_INTO_OPTIONS.find((option) => option.isActive(e)) ??
+          TURN_INTO_OPTIONS[0]
+        ).label,
+      };
     },
   });
 
@@ -206,6 +238,14 @@ export function DocumentEditor({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [editor, performSave, readOnly]);
 
+  // The "/image" slash command asks the editor to open the file picker.
+  useEffect(() => {
+    if (readOnly) return;
+    const onImageRequest = () => fileInputRef.current?.click();
+    window.addEventListener(IMAGE_REQUEST_EVENT, onImageRequest);
+    return () => window.removeEventListener(IMAGE_REQUEST_EVENT, onImageRequest);
+  }, [readOnly]);
+
   // Flush pending work on unmount / page hide.
   useEffect(() => {
     if (!editor || readOnly) return;
@@ -291,128 +331,18 @@ export function DocumentEditor({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col">
       {!readOnly && (
-        <div
-          role="toolbar"
-          aria-label="Formatting"
-          className="sticky top-[57px] z-[5] -mx-1 flex flex-wrap items-center gap-0.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-1.5 py-1 shadow-sm"
-        >
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-            active={editor.isActive("heading", { level: 1 })}
-            label="Heading 1"
-          >
-            <Heading1 className="h-4 w-4" />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-            active={editor.isActive("heading", { level: 2 })}
-            label="Heading 2"
-          >
-            <Heading2 className="h-4 w-4" />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-            active={editor.isActive("heading", { level: 3 })}
-            label="Heading 3"
-          >
-            <Heading3 className="h-4 w-4" />
-          </ToolbarButton>
-          <ToolbarDivider />
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleBold().run()}
-            active={editor.isActive("bold")}
-            label="Bold (⌘B)"
-          >
-            <Bold className="h-4 w-4" />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-            active={editor.isActive("italic")}
-            label="Italic (⌘I)"
-          >
-            <Italic className="h-4 w-4" />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={openLinkDialog}
-            active={editor.isActive("link")}
-            label="Link"
-          >
-            <Link2 className="h-4 w-4" />
-          </ToolbarButton>
-          <ToolbarDivider />
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
-            active={editor.isActive("bulletList")}
-            label="Bullet list (⌘⇧8)"
-          >
-            <List className="h-4 w-4" />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleOrderedList().run()}
-            active={editor.isActive("orderedList")}
-            label="Numbered list (⌘⇧7)"
-          >
-            <ListOrdered className="h-4 w-4" />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleTaskList().run()}
-            active={editor.isActive("taskList")}
-            label="Task list (⌘⇧9)"
-          >
-            <CheckSquare className="h-4 w-4" />
-          </ToolbarButton>
-          <ToolbarDivider />
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-            active={editor.isActive("codeBlock")}
-            label="Code block (⌘⌥C)"
-          >
-            <Code className="h-4 w-4" />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleBlockquote().run()}
-            active={editor.isActive("blockquote")}
-            label="Quote"
-          >
-            <Quote className="h-4 w-4" />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => fileInputRef.current?.click()}
-            label="Insert image"
-          >
-            <ImagePlus className="h-4 w-4" />
-          </ToolbarButton>
-          <ToolbarDivider />
-          <ToolbarButton
-            onClick={() => editor.chain().focus().undo().run()}
-            label="Undo (⌘Z)"
-            disabled={!editor.can().undo()}
-          >
-            <Undo className="h-4 w-4" />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().redo().run()}
-            label="Redo (⌘⇧Z)"
-            disabled={!editor.can().redo()}
-          >
-            <Redo className="h-4 w-4" />
-          </ToolbarButton>
-
-          <div className="ml-auto pr-1">
-            <SaveIndicator
-              status={status}
-              onRetry={() => void performSave(editor)}
-            />
-          </div>
+        <div className="flex h-5 items-center justify-end">
+          <SaveIndicator
+            status={status}
+            onRetry={() => void performSave(editor)}
+          />
         </div>
       )}
 
       {readOnly ? (
-        <h1 className="font-[family-name:var(--font-display)] text-4xl tracking-tight">
-          {title}
-        </h1>
+        <h1 className="mb-2 text-4xl font-bold tracking-tight">{title}</h1>
       ) : (
         <input
           value={title}
@@ -422,15 +352,79 @@ export function DocumentEditor({
             scheduleSave(editor);
           }}
           onKeyDown={(event) => {
-            if (event.key === "Enter") {
+            if (event.key === "Enter" || event.key === "ArrowDown") {
               event.preventDefault();
               editor.commands.focus("start");
             }
           }}
           aria-label="Document title"
-          className="w-full bg-transparent font-[family-name:var(--font-display)] text-4xl tracking-tight outline-none placeholder:text-[var(--muted-foreground)]"
-          placeholder="Untitled"
+          className="mb-2 w-full bg-transparent text-4xl font-bold tracking-tight outline-none placeholder:text-[rgba(55,53,47,0.2)]"
+          placeholder="New page"
         />
+      )}
+
+      {!readOnly && (
+        <BubbleMenu
+          editor={editor}
+          options={{ placement: "top-start", offset: 8 }}
+          shouldShow={({ editor: e, state }) => {
+            if (state.selection.empty) return false;
+            // Only for text selections: skip images and code blocks.
+            if (isNodeSelection(state.selection)) return false;
+            if (e.isActive("codeBlock")) return false;
+            return true;
+          }}
+          className="flex items-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-[0_9px_24px_rgba(15,15,15,0.2)]"
+        >
+          <TurnIntoDropdown
+            editor={editor}
+            activeLabel={activeStates?.turnIntoLabel ?? "Text"}
+          />
+          <BubbleDivider />
+          <BubbleButton
+            onClick={() => editor.chain().focus().toggleBold().run()}
+            active={activeStates?.bold}
+            label="Bold (⌘B)"
+          >
+            <Bold className="h-4 w-4" />
+          </BubbleButton>
+          <BubbleButton
+            onClick={() => editor.chain().focus().toggleItalic().run()}
+            active={activeStates?.italic}
+            label="Italic (⌘I)"
+          >
+            <Italic className="h-4 w-4" />
+          </BubbleButton>
+          <BubbleButton
+            onClick={() => editor.chain().focus().toggleUnderline().run()}
+            active={activeStates?.underline}
+            label="Underline (⌘U)"
+          >
+            <Underline className="h-4 w-4" />
+          </BubbleButton>
+          <BubbleButton
+            onClick={() => editor.chain().focus().toggleStrike().run()}
+            active={activeStates?.strike}
+            label="Strikethrough (⌘⇧S)"
+          >
+            <Strikethrough className="h-4 w-4" />
+          </BubbleButton>
+          <BubbleButton
+            onClick={() => editor.chain().focus().toggleCode().run()}
+            active={activeStates?.code}
+            label="Code (⌘E)"
+          >
+            <Code className="h-4 w-4" />
+          </BubbleButton>
+          <BubbleDivider />
+          <BubbleButton
+            onClick={openLinkDialog}
+            active={activeStates?.link}
+            label="Link (⌘K)"
+          >
+            <Link2 className="h-4 w-4" />
+          </BubbleButton>
+        </BubbleMenu>
       )}
 
       <EditorContent editor={editor} />
@@ -495,6 +489,107 @@ export function DocumentEditor({
   );
 }
 
+const TURN_INTO_OPTIONS: Array<{
+  label: string;
+  isActive: (editor: Editor) => boolean;
+  apply: (editor: Editor) => void;
+}> = [
+  {
+    label: "Text",
+    isActive: (editor) =>
+      editor.isActive("paragraph") &&
+      !editor.isActive("bulletList") &&
+      !editor.isActive("orderedList") &&
+      !editor.isActive("taskList") &&
+      !editor.isActive("blockquote"),
+    apply: (editor) => {
+      const chain = editor.chain().focus();
+      if (editor.isActive("bulletList")) chain.toggleBulletList();
+      if (editor.isActive("orderedList")) chain.toggleOrderedList();
+      if (editor.isActive("taskList")) chain.toggleTaskList();
+      if (editor.isActive("blockquote")) chain.lift("blockquote");
+      chain.setParagraph().run();
+    },
+  },
+  {
+    label: "Heading 1",
+    isActive: (editor) => editor.isActive("heading", { level: 1 }),
+    apply: (editor) => editor.chain().focus().setHeading({ level: 1 }).run(),
+  },
+  {
+    label: "Heading 2",
+    isActive: (editor) => editor.isActive("heading", { level: 2 }),
+    apply: (editor) => editor.chain().focus().setHeading({ level: 2 }).run(),
+  },
+  {
+    label: "Heading 3",
+    isActive: (editor) => editor.isActive("heading", { level: 3 }),
+    apply: (editor) => editor.chain().focus().setHeading({ level: 3 }).run(),
+  },
+  {
+    label: "Bulleted list",
+    isActive: (editor) => editor.isActive("bulletList"),
+    apply: (editor) => editor.chain().focus().toggleBulletList().run(),
+  },
+  {
+    label: "Numbered list",
+    isActive: (editor) => editor.isActive("orderedList"),
+    apply: (editor) => editor.chain().focus().toggleOrderedList().run(),
+  },
+  {
+    label: "To-do list",
+    isActive: (editor) => editor.isActive("taskList"),
+    apply: (editor) => editor.chain().focus().toggleTaskList().run(),
+  },
+  {
+    label: "Quote",
+    isActive: (editor) => editor.isActive("blockquote"),
+    apply: (editor) => editor.chain().focus().toggleBlockquote().run(),
+  },
+  {
+    label: "Code",
+    isActive: (editor) => editor.isActive("codeBlock"),
+    apply: (editor) => editor.chain().focus().toggleCodeBlock().run(),
+  },
+];
+
+function TurnIntoDropdown({
+  editor,
+  activeLabel,
+}: {
+  editor: Editor;
+  activeLabel: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="Turn into"
+          onMouseDown={(event) => event.preventDefault()}
+          className="flex h-8 items-center gap-1 px-2.5 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--sidebar-hover)] focus-visible:outline-none"
+        >
+          {activeLabel}
+          <ChevronDown className="h-3 w-3 text-[var(--muted-foreground)]" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-44">
+        {TURN_INTO_OPTIONS.map((option) => (
+          <DropdownMenuItem
+            key={option.label}
+            onSelect={() => option.apply(editor)}
+          >
+            {option.label}
+            {option.label === activeLabel && (
+              <Check className="ml-auto h-3.5 w-3.5 text-[var(--primary)]" />
+            )}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function SaveIndicator({
   status,
   onRetry,
@@ -529,7 +624,7 @@ function SaveIndicator({
         "Unsaved changes"
       ) : (
         <>
-          <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
+          <Check className="h-3.5 w-3.5" />
           Saved
         </>
       )}
@@ -537,44 +632,37 @@ function SaveIndicator({
   );
 }
 
-function ToolbarButton({
+function BubbleButton({
   children,
   onClick,
   active,
   label,
-  disabled,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   active?: boolean;
   label: string;
-  disabled?: boolean;
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-label={label}
-          aria-pressed={active}
-          // Keep focus (and selection) in the editor while clicking.
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={onClick}
-          disabled={disabled}
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:pointer-events-none disabled:opacity-40 ${
-            active
-              ? "bg-[var(--muted)] text-[var(--foreground)]"
-              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
-          }`}
-        >
-          {children}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      aria-pressed={active}
+      // Keep focus (and selection) in the editor while clicking.
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onClick}
+      className={`inline-flex h-8 w-8 items-center justify-center transition-colors focus-visible:outline-none ${
+        active
+          ? "text-[var(--primary)]"
+          : "text-[var(--foreground)] hover:bg-[var(--sidebar-hover)]"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
-function ToolbarDivider() {
-  return <span aria-hidden className="mx-1 h-5 w-px bg-[var(--border)]" />;
+function BubbleDivider() {
+  return <span aria-hidden className="h-5 w-px bg-[var(--border)]" />;
 }

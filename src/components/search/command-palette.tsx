@@ -176,25 +176,25 @@ export function CommandPalette({ workspaceId }: { workspaceId?: string }) {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="top-[18%] max-w-xl translate-y-0 gap-0 overflow-hidden p-0"
+        className="top-[16%] max-w-2xl translate-y-0 gap-0 overflow-hidden rounded-xl p-0 shadow-[0_24px_60px_rgba(15,15,15,0.25)]"
         hideClose
         aria-describedby={undefined}
         onKeyDown={onKeyDown}
       >
         <DialogTitle className="sr-only">Search documents</DialogTitle>
-        <div className="flex items-center gap-2 border-b border-[var(--border)] px-4">
+        <div className="flex items-center gap-3 border-b border-[var(--border)] px-4">
           {loading ? (
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[var(--muted-foreground)]" />
+            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-[var(--muted-foreground)]" />
           ) : (
-            <Search className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
+            <Search className="h-5 w-5 shrink-0 text-[var(--muted-foreground)]" />
           )}
           <input
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search pages and content…"
+            placeholder="Search or ask a question…"
             aria-label="Search pages and content"
-            className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
+            className="h-13 w-full bg-transparent text-lg outline-none placeholder:text-[rgba(55,53,47,0.35)]"
           />
           <kbd className="shrink-0 rounded border border-[var(--border)] bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
             esc
@@ -264,15 +264,15 @@ export function CommandPalette({ workspaceId }: { workspaceId?: string }) {
               </p>
             </div>
           )}
-          <ul ref={listRef} role="listbox" aria-label="Search results">
+          <ul ref={listRef} role="listbox" aria-label="Search results" className="p-1">
             {hits.map((hit, index) => (
               <li key={hit.documentId} role="option" aria-selected={index === selectedIndex}>
                 <button
                   type="button"
                   onClick={() => openHit(hit)}
                   onMouseMove={() => setSelectedIndex(index)}
-                  className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors ${
-                    index === selectedIndex ? "bg-[var(--muted)]" : ""
+                  className={`flex w-full items-start gap-3 rounded-md px-4 py-2.5 text-left transition-colors ${
+                    index === selectedIndex ? "bg-[var(--sidebar-hover)]" : ""
                   }`}
                 >
                   <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />

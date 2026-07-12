@@ -178,8 +178,18 @@ export function DocHeader({
       <div className="flex items-center gap-1.5">
         <Button
           variant="ghost"
+          size="sm"
+          onClick={() => setShareOpen(true)}
+          className="gap-1.5 text-sm font-normal"
+        >
+          <Share2 className="h-3.5 w-3.5" />
+          Share
+        </Button>
+
+        <Button
+          variant="ghost"
           size="icon"
-          className="h-9 w-9"
+          className="h-8 w-8"
           aria-label={isFavorited ? "Remove from favorites" : "Add to favorites"}
           aria-pressed={isFavorited}
           onClick={toggleFavorite}
@@ -193,22 +203,12 @@ export function DocHeader({
           />
         </Button>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShareOpen(true)}
-          className="gap-1.5"
-        >
-          <Share2 className="h-3.5 w-3.5" />
-          Share
-        </Button>
-
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9"
+              className="h-8 w-8"
               aria-label="More actions"
             >
               <MoreHorizontal className="h-4 w-4" />

@@ -9,11 +9,14 @@ import {
 } from "@/components/ui/dialog";
 
 const SHORTCUTS: Array<{ keys: string[]; description: string }> = [
+  { keys: ["/"], description: "Open the block menu while writing" },
   { keys: ["⌘/Ctrl", "K"], description: "Search everything" },
   { keys: ["N"], description: "New page (outside a text field)" },
   { keys: ["⌘/Ctrl", "S"], description: "Save now (autosave is always on)" },
   { keys: ["⌘/Ctrl", "B"], description: "Bold selection" },
   { keys: ["⌘/Ctrl", "I"], description: "Italic selection" },
+  { keys: ["⌘/Ctrl", "U"], description: "Underline selection" },
+  { keys: ["⌘/Ctrl", "E"], description: "Inline code" },
   { keys: ["⌘/Ctrl", "Shift", "8"], description: "Bullet list" },
   { keys: ["⌘/Ctrl", "Shift", "7"], description: "Numbered list" },
   { keys: ["⌘/Ctrl", "Shift", "9"], description: "Task list" },

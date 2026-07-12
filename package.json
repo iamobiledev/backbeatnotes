@@ -19,6 +19,7 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test"
   },
   "dependencies": {
+    "@floating-ui/dom": "^1.7.6",
     "@neondatabase/serverless": "^1.1.0",
     "@radix-ui/react-avatar": "^1.2.2",
     "@radix-ui/react-dialog": "^1.1.19",
@@ -38,6 +39,7 @@
     "@tiptap/pm": "^3.27.3",
     "@tiptap/react": "^3.27.3",
     "@tiptap/starter-kit": "^3.27.3",
+    "@tiptap/suggestion": "^3.27.3",
     "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.6.1",
     "better-auth": "^1.6.23",

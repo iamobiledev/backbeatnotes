@@ -165,7 +165,7 @@ export function ShareDialog({
         <div className="space-y-5">
           {/* Who has access */}
           <section aria-label="Who has access">
-            <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+            <h3 className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)]">
               {workspace.isPersonal ? (
                 <BookLock className="h-3.5 w-3.5" />
               ) : (

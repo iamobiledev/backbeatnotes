@@ -84,16 +84,24 @@ test.describe.serial("core flows", () => {
     );
     await page.keyboard.press("Enter");
 
-    // Toolbar: heading
-    await page.getByRole("button", { name: "Heading 2" }).click();
+    // Slash command: heading
+    await page.keyboard.type("/h2");
+    await expect(
+      page.getByRole("listbox", { name: "Insert block" }),
+    ).toBeVisible();
+    await page.keyboard.press("Enter");
     await page.keyboard.type("Milestones");
     await expect(
       editor.getByRole("heading", { level: 2, name: "Milestones" }),
     ).toBeVisible();
     await page.keyboard.press("Enter");
 
-    // Task list
-    await page.getByRole("button", { name: /task list/i }).click();
+    // Slash command: to-do list
+    await page.keyboard.type("/todo");
+    await expect(
+      page.getByRole("listbox", { name: "Insert block" }),
+    ).toBeVisible();
+    await page.keyboard.press("Enter");
     await page.keyboard.type("Ship the Slack integration");
     await expect(editor.locator("ul[data-type='taskList']")).toBeVisible();
     await expect(

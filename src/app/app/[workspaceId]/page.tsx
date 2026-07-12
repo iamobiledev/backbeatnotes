@@ -109,7 +109,7 @@ export default async function WorkspacePage({
             <section aria-labelledby="favorites-heading">
               <h2
                 id="favorites-heading"
-                className="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]"
+                className="flex items-center gap-1.5 text-sm font-medium text-[var(--muted-foreground)]"
               >
                 <Star className="h-3.5 w-3.5" />
                 Favorites
@@ -141,7 +141,7 @@ export default async function WorkspacePage({
           <section aria-labelledby="recent-heading">
             <h2
               id="recent-heading"
-              className="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]"
+              className="flex items-center gap-1.5 text-sm font-medium text-[var(--muted-foreground)]"
             >
               <Clock className="h-3.5 w-3.5" />
               Recent
@@ -169,7 +169,7 @@ export default async function WorkspacePage({
           <section aria-labelledby="all-heading">
             <h2
               id="all-heading"
-              className="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]"
+              className="flex items-center gap-1.5 text-sm font-medium text-[var(--muted-foreground)]"
             >
               <FileText className="h-3.5 w-3.5" />
               All pages

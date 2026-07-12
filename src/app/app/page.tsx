@@ -27,7 +27,7 @@ export default async function AppHomePage() {
 
       {personal.length > 0 && (
         <section className="mt-10">
-          <h2 className="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+          <h2 className="flex items-center gap-1.5 text-sm font-medium text-[var(--muted-foreground)]">
             <BookLock className="h-3.5 w-3.5" />
             Private
           </h2>
@@ -50,7 +50,7 @@ export default async function AppHomePage() {
       )}
 
       <section className="mt-8">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+        <h2 className="flex items-center gap-1.5 text-sm font-medium text-[var(--muted-foreground)]">
           <Users className="h-3.5 w-3.5" />
           Workspaces
         </h2>
