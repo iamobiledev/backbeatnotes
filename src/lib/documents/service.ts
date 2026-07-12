@@ -492,6 +492,8 @@ export async function saveDocumentContent(opts: {
 
   if (title !== existing.title) {
     await recomputeBreadcrumbs(db, existing.id);
+    // Refresh the sidebar tree (and any sub-page links) that show this title.
+    revalidatePath(`/app/${existing.workspaceId}`, "layout");
     await recordDocumentActivity({
       documentId: existing.id,
       userId: opts.userId,
