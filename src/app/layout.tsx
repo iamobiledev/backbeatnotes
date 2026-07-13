@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { Toaster } from "sonner";
 import { brand } from "@/config/brand";
+import { ThemeProvider, ThemeScript } from "@/components/theme/theme";
 import "./globals.css";
 
 // Notion-style UI: one clean sans family for both headings and body.
@@ -37,19 +38,25 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${inter.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
+      <head>
+        <ThemeScript />
+      </head>
       <body className="min-h-full flex flex-col">
-        {children}
-        <Toaster
-          position="bottom-right"
-          toastOptions={{
-            style: {
-              background: "var(--card)",
-              color: "var(--foreground)",
-              border: "1px solid var(--border)",
-            },
-          }}
-        />
+        <ThemeProvider>
+          {children}
+          <Toaster
+            position="bottom-right"
+            toastOptions={{
+              style: {
+                background: "var(--card)",
+                color: "var(--foreground)",
+                border: "1px solid var(--border)",
+              },
+            }}
+          />
+        </ThemeProvider>
         <Analytics />
       </body>
     </html>

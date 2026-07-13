@@ -295,6 +295,35 @@ test.describe.serial("core flows", () => {
     );
   });
 
+  test("appearance setting toggles dark mode and defaults to system", async ({
+    page,
+  }) => {
+    await signIn(page, DEMO_EMAIL);
+    await page.goto(docUrl);
+    const html = page.locator("html");
+
+    // Default: sync with system (Playwright emulates light by default).
+    await expect(html).not.toHaveClass(/dark/);
+
+    await page.getByRole("button", { name: "Account menu" }).click();
+    await expect(page.getByText("Appearance")).toBeVisible();
+    await page.getByRole("menuitem", { name: "Dark" }).click();
+    await expect(html).toHaveClass(/dark/);
+
+    // Persists across reloads (no flash-managed init script).
+    await page.reload();
+    await expect(html).toHaveClass(/dark/);
+
+    await page.getByRole("button", { name: "Account menu" }).click();
+    await page.getByRole("menuitem", { name: "Light" }).click();
+    await expect(html).not.toHaveClass(/dark/);
+
+    // Back to the default for the remaining tests.
+    await page.getByRole("menuitem", { name: "Sync with system" }).click();
+    await expect(html).not.toHaveClass(/dark/);
+    await page.keyboard.press("Escape");
+  });
+
   test("favorite a page shows it in the sidebar", async ({ page }) => {
     await signIn(page, DEMO_EMAIL);
     await page.goto(docUrl);

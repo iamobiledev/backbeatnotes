@@ -442,7 +442,7 @@ export function DocumentEditor({
             }
           }}
           aria-label="Document title"
-          className="mb-2 w-full bg-transparent text-4xl font-bold tracking-tight outline-none placeholder:text-[rgba(55,53,47,0.2)]"
+          className="mb-2 w-full bg-transparent text-4xl font-bold tracking-tight outline-none placeholder:text-[var(--placeholder-faint)]"
           placeholder="New page"
         />
       )}

@@ -240,7 +240,7 @@ function TreeItem({
               tabIndex={-1}
               aria-label={isExpanded ? "Collapse" : "Expand"}
               onClick={() => onToggle(node.id)}
-              className="absolute inset-0.5 flex items-center justify-center rounded text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[rgba(55,53,47,0.12)] focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
+              className="absolute inset-0.5 flex items-center justify-center rounded text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[var(--hover-strong)] focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
             >
               <ChevronRight
                 className={`h-3.5 w-3.5 transition-transform ${
@@ -298,7 +298,7 @@ function TreeItem({
                   type="button"
                   aria-label={`Page options for ${node.title || "Untitled"}`}
                   title="Delete, duplicate, and more…"
-                  className="flex h-5 w-5 items-center justify-center rounded text-[var(--muted-foreground)] hover:bg-[rgba(55,53,47,0.12)] focus-visible:outline-none"
+                  className="flex h-5 w-5 items-center justify-center rounded text-[var(--muted-foreground)] hover:bg-[var(--hover-strong)] focus-visible:outline-none"
                 >
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </button>
@@ -348,7 +348,7 @@ function TreeItem({
                 aria-label={`Add page inside ${node.title || "Untitled"}`}
                 title="Add a page inside"
                 onClick={() => onCreateChild(node.id)}
-                className="flex h-5 w-5 items-center justify-center rounded text-[var(--muted-foreground)] hover:bg-[rgba(55,53,47,0.12)] focus-visible:outline-none"
+                className="flex h-5 w-5 items-center justify-center rounded text-[var(--muted-foreground)] hover:bg-[var(--hover-strong)] focus-visible:outline-none"
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>

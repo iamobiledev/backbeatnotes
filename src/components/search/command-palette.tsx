@@ -194,7 +194,7 @@ export function CommandPalette({ workspaceId }: { workspaceId?: string }) {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search or ask a question…"
             aria-label="Search pages and content"
-            className="h-13 w-full bg-transparent text-lg outline-none placeholder:text-[rgba(55,53,47,0.35)]"
+            className="h-13 w-full bg-transparent text-lg outline-none placeholder:text-[var(--placeholder)]"
           />
           <kbd className="shrink-0 rounded border border-[var(--border)] bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
             esc
