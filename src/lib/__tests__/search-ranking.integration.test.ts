@@ -156,6 +156,48 @@ runIf("search ranking + permissions (integration)", () => {
     expect(ids).toEqual([docs.otherWorkspace]);
   });
 
+  it("direct shares make pages searchable for non-members (incl. private)", async () => {
+    const schema = await import("@/db/schema");
+    await db.insert(schema.documentPermissions).values([
+      {
+        id: `p1-${token}`,
+        documentId: docs.exactTitle,
+        userId: outsiderId,
+        level: "view",
+      },
+      {
+        id: `p2-${token}`,
+        documentId: docs.privateDoc,
+        userId: outsiderId,
+        level: "edit",
+      },
+    ]);
+
+    const result = await search.search({
+      query: `flumpet ${token}`,
+      userId: outsiderId,
+    });
+    const ids = result.hits.map((hit) => hit.documentId);
+    expect(ids).toContain(docs.exactTitle);
+    // Private ("Only people invited") docs surface once directly shared.
+    expect(ids).toContain(docs.privateDoc);
+    // Unshared docs in the foreign workspace stay hidden.
+    expect(ids).not.toContain(docs.prefixTitle);
+
+    // Removing the grants hides the docs again.
+    const { sql } = await import("drizzle-orm");
+    await db.execute(
+      sql`DELETE FROM document_permissions WHERE id IN (${`p1-${token}`}, ${`p2-${token}`})`,
+    );
+    const revoked = await search.search({
+      query: `flumpet ${token}`,
+      userId: outsiderId,
+    });
+    const revokedIds = revoked.hits.map((hit) => hit.documentId);
+    expect(revokedIds).not.toContain(docs.exactTitle);
+    expect(revokedIds).not.toContain(docs.privateDoc);
+  });
+
   it("body matches include highlighted snippets", async () => {
     const result = await search.search({
       query: "architecture design",
