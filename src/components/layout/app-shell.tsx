@@ -56,7 +56,7 @@ type AppShellProps = {
   workspaces: WorkspaceSummary[];
   /** Sidebar trees for every workspace (Private + Teamspaces sections). */
   trees: WorkspaceTree[];
-  favorites: Array<{ id: string; title: string }>;
+  favorites: Array<{ id: string; title: string; workspaceId: string }>;
   /** Every favorited document id for the user (for tree row menus). */
   favoriteIds: string[];
   children: React.ReactNode;
@@ -206,7 +206,7 @@ export function AppShell({
               {favorites.map((fav) => (
                 <li key={fav.id}>
                   <Link
-                    href={`/app/${workspace.id}/docs/${fav.id}`}
+                    href={`/app/${fav.workspaceId}/docs/${fav.id}`}
                     className={`flex items-center gap-1.5 rounded-md px-2 py-1 font-medium transition-colors hover:bg-[var(--sidebar-hover)] ${
                       pathname?.endsWith(`/docs/${fav.id}`)
                         ? "bg-[var(--sidebar-active)] text-[var(--foreground)]"

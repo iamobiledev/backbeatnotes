@@ -2,7 +2,7 @@ import { requireVerifiedSession, platformRoleOf } from "@/lib/session";
 import {
   listUserWorkspaces,
   listWorkspaceDocumentTree,
-  listFavoriteDocuments,
+  listAllFavoriteDocuments,
   listFavoriteDocumentIds,
 } from "@/lib/documents/service";
 import { AppShell } from "@/components/layout/app-shell";
@@ -39,7 +39,7 @@ export default async function WorkspaceLayout({
         nodes: await listWorkspaceDocumentTree(session.user.id, ws.id),
       })),
     ),
-    listFavoriteDocuments(session.user.id, workspaceId),
+    listAllFavoriteDocuments(session.user.id),
     listFavoriteDocumentIds(session.user.id),
   ]);
 
@@ -60,7 +60,11 @@ export default async function WorkspaceLayout({
         role: w.role,
       }))}
       trees={trees}
-      favorites={favoriteDocs.map((f) => ({ id: f.id, title: f.title }))}
+      favorites={favoriteDocs.map((f) => ({
+        id: f.id,
+        title: f.title,
+        workspaceId: f.workspaceId,
+      }))}
       favoriteIds={favoriteIds}
     >
       {children}

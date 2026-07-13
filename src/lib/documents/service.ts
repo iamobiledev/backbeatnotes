@@ -293,6 +293,35 @@ export async function listFavoriteDocuments(
     .orderBy(desc(favorites.createdAt));
 }
 
+/** Favorites across every workspace the user is still a member of. */
+export async function listAllFavoriteDocuments(userId: string) {
+  const db = getDb();
+  return db
+    .select({
+      id: documents.id,
+      title: documents.title,
+      icon: documents.icon,
+      workspaceId: documents.workspaceId,
+    })
+    .from(favorites)
+    .innerJoin(documents, eq(documents.id, favorites.documentId))
+    .innerJoin(
+      workspaceMembers,
+      and(
+        eq(workspaceMembers.workspaceId, documents.workspaceId),
+        eq(workspaceMembers.userId, userId),
+      ),
+    )
+    .where(
+      and(
+        eq(favorites.userId, userId),
+        isNull(documents.archivedAt),
+        visibleTo(userId),
+      ),
+    )
+    .orderBy(desc(favorites.createdAt));
+}
+
 /** Every favorited document id for the user, across all workspaces. */
 export async function listFavoriteDocumentIds(
   userId: string,
