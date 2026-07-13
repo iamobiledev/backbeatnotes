@@ -175,6 +175,52 @@ test.describe.serial("core flows", () => {
     ).toBeVisible();
   });
 
+  test("'/code' inserts a Notion-style code block with highlighting", async ({
+    page,
+  }) => {
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await signIn(page, DEMO_EMAIL);
+    await page.goto(docUrl);
+
+    const editor = page.locator(".ProseMirror");
+    await editor.click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("/code");
+    await expect(
+      page.getByRole("listbox", { name: "Insert block" }),
+    ).toBeVisible();
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("const greet = () => 'hi';");
+
+    const codeBlock = page.locator(".ProseMirror .code-block").first();
+    await expect(codeBlock.locator("pre code")).toContainText("const greet");
+
+    // Pick a language from the hover controls → syntax colors appear.
+    await codeBlock.hover();
+    await codeBlock.getByRole("button", { name: "Code language" }).click();
+    await page.getByRole("menuitem", { name: "JavaScript" }).click();
+    await expect(codeBlock.locator(".hljs-keyword").first()).toHaveText(
+      "const",
+    );
+
+    // Copy button copies the code and confirms.
+    await codeBlock.hover();
+    await codeBlock.getByRole("button", { name: "Copy code" }).click();
+    await expect(codeBlock.getByText("Copied")).toBeVisible();
+
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // Language + content survive a reload.
+    await page.reload();
+    const reloaded = page.locator(".ProseMirror .code-block").first();
+    await expect(reloaded.locator(".hljs-keyword").first()).toHaveText(
+      "const",
+    );
+  });
+
   test("favorite a page shows it in the sidebar", async ({ page }) => {
     await signIn(page, DEMO_EMAIL);
     await page.goto(docUrl);
