@@ -183,7 +183,9 @@ test.describe.serial("core flows", () => {
     await page.goto(docUrl);
 
     const editor = page.locator(".ProseMirror");
-    await editor.click();
+    // Click a fixed corner: the element's center could hit the sub-page
+    // link inserted by the previous test and navigate away.
+    await editor.click({ position: { x: 5, y: 5 } });
     await page.keyboard.press("ControlOrMeta+End");
     await page.keyboard.press("Enter");
     await page.keyboard.type("/code");
