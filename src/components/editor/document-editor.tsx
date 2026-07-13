@@ -55,6 +55,7 @@ import {
   SUBPAGE_REQUEST_EVENT,
 } from "./slash-command";
 import { Subpage } from "./subpage-node";
+import { NotionCodeBlock } from "./code-block";
 import { actionCreateDocument } from "@/app/actions";
 
 export type SaveStatus = "saved" | "saving" | "dirty" | "error";
@@ -119,7 +120,9 @@ export function DocumentEditor({
     extensions: [
       StarterKit.configure({
         link: false,
+        codeBlock: false,
       }),
+      NotionCodeBlock,
       Placeholder.configure({
         // Notion-style: hint on the caret's empty line, not just the
         // first line of the document.
