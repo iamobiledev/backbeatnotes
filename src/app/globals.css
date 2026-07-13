@@ -304,6 +304,87 @@ body {
   border-radius: 4px;
 }
 
+/* ---- Notion-style block handles & drag reordering ---- */
+
+/*
+ * Leave a left gutter for the hover-reveal + / grip controls.
+ * Use margin on direct children (TipTap’s recommended pattern) so floating-ui
+ * can place the handle to the left of each block without colliding with text.
+ * Raise specificity above Tailwind Typography’s `.prose` resets.
+ */
+.ProseMirror.editor-with-handles > * {
+  margin-inline-start: 2.75rem;
+}
+
+.editor-title {
+  padding-left: 2.75rem;
+}
+
+/* Editor canvas is the positioning context for the drag-handle portal. */
+.editor-canvas {
+  position: relative;
+}
+
+/* Subtle hover highlight on the active block (set via JS). */
+.ProseMirror .is-block-hovered {
+  border-radius: 4px;
+  background-color: rgba(55, 53, 47, 0.04);
+}
+
+/* Selection highlight while dragging a block range. */
+.ProseMirror-noderangeselection *::selection {
+  background: transparent;
+}
+
+.ProseMirror-noderangeselection * {
+  caret-color: transparent;
+}
+
+.ProseMirror-selectednoderange {
+  position: relative;
+}
+
+.ProseMirror-selectednoderange::before {
+  content: "";
+  position: absolute;
+  inset: -0.15rem -0.25rem;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 4px;
+  background-color: rgba(35, 131, 226, 0.14);
+}
+
+/* Custom Notion-style block handle (fixed, hover-reveal). */
+.block-drag-handle {
+  display: flex;
+  align-items: flex-start;
+  pointer-events: auto;
+}
+
+.block-drag-handle.is-dragging {
+  opacity: 0.35;
+}
+
+/*
+ * Notion-style drop indicator: bright blue line with a filled circle on the
+ * left edge (prosemirror-dropcursor renders a thin absolutely-positioned div).
+ */
+.notion-dropcursor {
+  border-radius: 1px;
+}
+
+.notion-dropcursor::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: #2383e2;
+  transform: translateY(-50%);
+}
+
 /* Line clamp helper for search snippets */
 .line-clamp-2 {
   display: -webkit-box;
