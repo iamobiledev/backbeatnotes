@@ -297,11 +297,31 @@ body {
   text-decoration: none;
 }
 
-/* Selected node outline (e.g. images) */
+/* Selected node outline (e.g. images) — not during block-handle drags. */
 .ProseMirror-selectednode {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+.ProseMirror.is-dragging-block .ProseMirror-selectednode {
+  outline: none;
+}
+
+/* Source block dims while its custom drag preview follows the cursor. */
+.ProseMirror .is-drag-source {
+  opacity: 0.35;
+}
+
+.block-drag-preview {
+  position: fixed;
+  z-index: 1000;
+  margin: 0;
+  pointer-events: none;
+  opacity: 0.85;
+  box-shadow: 0 8px 24px rgba(15, 15, 15, 0.18);
+  border-radius: 4px;
+  background: var(--background);
 }
 
 /* ---- Notion-style block handles & drag reordering ---- */

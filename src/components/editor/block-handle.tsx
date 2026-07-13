@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { NodeSelection } from "@tiptap/pm/state";
+import { TextSelection } from "@tiptap/pm/state";
 import {
   Check,
   CheckSquare,
@@ -49,10 +49,21 @@ const TURN_INTO_ICONS: Record<string, LucideIcon> = {
 const HANDLE_WIDTH = 52;
 const BLOCK_DRAG_MIME = "application/x-docloom-block";
 
+/** 1×1 transparent canvas — kills the browser’s default drag “globe” ghost. */
+function createEmptyDragImage(): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  return canvas;
+}
+
 /** ProseMirror exposes `view.dragging` as a mutable drag payload. */
 function setProseMirrorDragging(
   view: Editor["view"],
-  payload: { slice: ReturnType<NodeSelection["content"]>; move: boolean } | null,
+  payload: {
+    slice: ReturnType<Editor["view"]["state"]["doc"]["slice"]>;
+    move: boolean;
+  } | null,
 ) {
   view.dragging = payload;
 }
@@ -96,6 +107,8 @@ export function BlockHandle({ editor }: BlockHandleProps) {
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuOpenRef = useRef(menuOpen);
   const draggingRef = useRef(dragging);
+  const dragPreviewRef = useRef<HTMLElement | null>(null);
+  const dragSourceDomRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     menuOpenRef.current = menuOpen;
@@ -333,6 +346,15 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     [editor, selectBlock, closeMenu],
   );
 
+  const cleanupDragChrome = useCallback(() => {
+    dragPreviewRef.current?.remove();
+    dragPreviewRef.current = null;
+    dragSourceDomRef.current?.classList.remove("is-drag-source");
+    dragSourceDomRef.current = null;
+    editor.view.dom.classList.remove("is-dragging-block");
+    setProseMirrorDragging(editor.view, null);
+  }, [editor]);
+
   const onGripDragStart = useCallback(
     (event: React.DragEvent<HTMLButtonElement>) => {
       const block = hoveredRef.current;
@@ -347,40 +369,61 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       dragPosRef.current = block.pos;
 
       const view = editor.view;
-      const selection = NodeSelection.create(view.state.doc, block.pos);
-      const slice = selection.content();
-      view.dispatch(view.state.tr.setSelection(selection));
+
+      // Drop any focus ring / NodeSelection outline — those were showing as a
+      // blue box around the dragged (or previously focused) block.
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+      const clearTr = view.state.tr;
+      if (block.node.isTextblock) {
+        clearTr.setSelection(
+          TextSelection.create(view.state.doc, block.pos + 1),
+        );
+      } else {
+        clearTr.setSelection(
+          TextSelection.near(view.state.doc.resolve(block.pos)),
+        );
+      }
+      view.dispatch(clearTr);
+
+      const from = block.pos;
+      const to = block.pos + block.node.nodeSize;
+      const slice = view.state.doc.slice(from, to);
       setProseMirrorDragging(view, { slice, move: true });
+      view.dom.classList.add("is-dragging-block");
+
+      block.dom.classList.add("is-drag-source");
+      dragSourceDomRef.current = block.dom;
 
       event.dataTransfer.effectAllowed = "move";
+      // Custom MIME only — text/plain / URL payloads make Chrome show the
+      // native globe+document drag ghost on macOS.
       event.dataTransfer.setData(BLOCK_DRAG_MIME, String(block.pos));
-      // Some browsers require a text fallback; use a non-empty sentinel that
-      // we ignore on drop so an empty string isn’t inserted as a new block.
-      event.dataTransfer.setData("text/plain", "\u00A0");
+      event.dataTransfer.setDragImage(createEmptyDragImage(), 0, 0);
 
-      const ghost = block.dom.cloneNode(true) as HTMLElement;
-      ghost.style.position = "absolute";
-      ghost.style.top = "-10000px";
-      ghost.style.left = "0";
-      ghost.style.width = `${block.dom.getBoundingClientRect().width}px`;
-      ghost.style.opacity = "0.85";
-      ghost.style.pointerEvents = "none";
-      document.body.appendChild(ghost);
-      event.dataTransfer.setDragImage(ghost, 0, 0);
-      window.setTimeout(() => ghost.remove(), 0);
+      // Our own preview (follows the cursor via document dragover).
+      const preview = block.dom.cloneNode(true) as HTMLElement;
+      const width = block.dom.getBoundingClientRect().width;
+      preview.classList.add("block-drag-preview");
+      preview.style.width = `${width}px`;
+      preview.style.left = `${event.clientX + 12}px`;
+      preview.style.top = `${event.clientY + 8}px`;
+      document.body.appendChild(preview);
+      dragPreviewRef.current = preview;
     },
     [editor, closeMenu],
   );
 
   const onGripDragEnd = useCallback(() => {
-    setProseMirrorDragging(editor.view, null);
+    cleanupDragChrome();
     setDragging(false);
     dragPosRef.current = -1;
     window.setTimeout(() => {
       skipClickRef.current = false;
     }, 0);
     hide();
-  }, [editor, hide]);
+  }, [cleanupDragChrome, hide]);
 
   // Handle drops ourselves so external text/plain fallbacks never insert
   // empty paragraphs, and so reordering is deterministic.
@@ -393,6 +436,19 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       if (!event.dataTransfer?.types.includes(BLOCK_DRAG_MIME)) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
+    };
+
+    const onDocDragOver = (event: DragEvent) => {
+      if (!draggingRef.current) return;
+      // Keep dropEffect=move globally so the OS doesn’t flip to the “not
+      // allowed” cursor (which also brings up the globe ghost on macOS).
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      const preview = dragPreviewRef.current;
+      if (preview) {
+        preview.style.left = `${event.clientX + 12}px`;
+        preview.style.top = `${event.clientY + 8}px`;
+      }
     };
 
     const onDrop = (event: DragEvent) => {
@@ -429,18 +485,24 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       }
 
       moveBlock(editor, from, to);
-      setProseMirrorDragging(view, null);
+      cleanupDragChrome();
       setDragging(false);
       dragPosRef.current = -1;
     };
 
     dom.addEventListener("dragover", onDragOver);
     dom.addEventListener("drop", onDrop, true);
+    document.addEventListener("dragover", onDocDragOver);
     return () => {
       dom.removeEventListener("dragover", onDragOver);
       dom.removeEventListener("drop", onDrop, true);
+      document.removeEventListener("dragover", onDocDragOver);
     };
-  }, [editor]);
+  }, [editor, cleanupDragChrome]);
+
+  useEffect(() => {
+    return () => cleanupDragChrome();
+  }, [cleanupDragChrome]);
 
   const activeLabel = getActiveTurnIntoLabel(editor);
 
