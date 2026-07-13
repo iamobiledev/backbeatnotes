@@ -7,6 +7,7 @@ import Link from "@tiptap/extension-link";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { Subpage } from "@/components/editor/subpage-node";
+import { NotionCodeBlock } from "@/components/editor/code-block";
 
 /** Render TipTap JSON read-only (used for version previews). */
 export function ReadOnlyDoc({
@@ -17,7 +18,8 @@ export function ReadOnlyDoc({
   const editor = useEditor(
     {
       extensions: [
-        StarterKit.configure({ link: false }),
+        StarterKit.configure({ link: false, codeBlock: false }),
+        NotionCodeBlock,
         Image.configure({ allowBase64: false }),
         Link.configure({ openOnClick: false }),
         TaskList,
