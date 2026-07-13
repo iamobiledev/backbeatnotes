@@ -10,6 +10,7 @@ import {
   listUserWorkspaces,
   refreshSubpageTitles,
 } from "@/lib/documents/service";
+import { getWorkspaceById } from "@/lib/workspaces/service";
 import { getSlackStatus } from "@/lib/slack/status";
 import {
   canEdit as accessCanEdit,
@@ -65,14 +66,40 @@ export default async function DocumentPage({
     ]);
   await recordDocumentView(session.user.id, doc.id);
 
-  const workspace = workspaces.find((w) => w.id === doc.workspaceId);
-  if (!workspace) notFound();
+  // The viewer may not be a workspace member (page shared directly with
+  // them) — fall back to loading the workspace and treating them as a guest.
+  const membership = workspaces.find((w) => w.id === doc.workspaceId);
+  const isWorkspaceMember = Boolean(membership);
+  let workspace: {
+    id: string;
+    name: string;
+    isPersonal: boolean;
+    role: "owner" | "admin" | "member" | "guest";
+  };
+  if (membership) {
+    workspace = {
+      id: membership.id,
+      name: membership.name,
+      isPersonal: membership.isPersonal,
+      role: membership.role,
+    };
+  } else {
+    const shared = await getWorkspaceById(doc.workspaceId);
+    if (!shared) notFound();
+    workspace = {
+      id: shared.id,
+      name: shared.name,
+      isPersonal: shared.isPersonal,
+      role: "guest",
+    };
+  }
 
   const editable = accessCanEdit(result.access);
   const trashed = doc.archivedAt !== null;
   const locked = doc.lockedAt !== null;
   const manageLock =
     doc.docType === "wiki" &&
+    isWorkspaceMember &&
     canManageWikiLock({
       membershipRole: workspace.role,
       platformRole: result.platformRole,
@@ -88,11 +115,12 @@ export default async function DocumentPage({
             id: doc.id,
             workspaceId: doc.workspaceId,
             title: doc.title,
-            visibility: doc.visibility,
+            published: doc.publishedAt !== null,
             publicSlug: doc.publicSlug,
             docType: doc.docType,
             locked,
           }}
+          isWorkspaceMember={isWorkspaceMember}
           canManageLock={manageLock}
           workspace={{
             id: workspace.id,

@@ -30,37 +30,17 @@ import { logger } from "@/lib/logger";
 /* Types                                                                       */
 /* -------------------------------------------------------------------------- */
 
-export type GeneralAccess = "invited" | "workspace";
-
-export type SharePerson = {
-  kind: "user";
-  userId: string;
-  name: string;
-  email: string;
-  image: string | null;
-  level: DocumentPermissionLevel;
-  isCreator: boolean;
-  isYou: boolean;
-};
-
-export type SharePendingInvitation = {
-  kind: "invitation";
-  invitationId: string;
-  email: string;
-  level: DocumentPermissionLevel;
-};
-
-export type DocumentSharing = {
-  /** Whether the caller may manage sharing (invite, change, General access). */
-  canShare: boolean;
-  generalAccess: GeneralAccess;
-  workspaceName: string;
-  isPersonal: boolean;
-  published: boolean;
-  publicSlug: string | null;
-  people: SharePerson[];
-  invitations: SharePendingInvitation[];
-};
+export type {
+  GeneralAccess,
+  SharePerson,
+  SharePendingInvitation,
+  DocumentSharing,
+} from "./types";
+import type {
+  GeneralAccess,
+  SharePerson,
+  DocumentSharing,
+} from "./types";
 
 export type ShareOutcome = "shared" | "invited" | "already" | "self";
 

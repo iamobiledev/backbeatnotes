@@ -12,7 +12,6 @@ import {
   Lock,
   LockOpen,
   MoreHorizontal,
-  Share2,
   Star,
   Trash2,
 } from "lucide-react";
@@ -29,7 +28,7 @@ import {
   actionTrashDocument,
   actionSetDocumentLock,
 } from "@/app/actions";
-import { ShareDialog } from "@/components/share/share-dialog";
+import { SharePopover } from "@/components/share/share-popover";
 import { HistoryPanel } from "./history-panel";
 
 export type DocHeaderProps = {
@@ -37,11 +36,13 @@ export type DocHeaderProps = {
     id: string;
     workspaceId: string;
     title: string;
-    visibility: "private" | "workspace" | "public";
+    published: boolean;
     publicSlug: string | null;
     docType: "doc" | "wiki";
     locked: boolean;
   };
+  /** Whether the current user is a member of the page's workspace. */
+  isWorkspaceMember: boolean;
   /** Current user may lock/unlock this wiki. */
   canManageLock: boolean;
   workspace: {
@@ -62,6 +63,7 @@ export type DocHeaderProps = {
 
 export function DocHeader({
   doc,
+  isWorkspaceMember,
   canManageLock,
   workspace,
   ancestors,
@@ -71,7 +73,6 @@ export function DocHeader({
 }: DocHeaderProps) {
   const router = useRouter();
   const [isFavorited, setIsFavorited] = useState(favorited);
-  const [shareOpen, setShareOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [, startTransition] = useTransition();
 
@@ -138,22 +139,30 @@ export function DocHeader({
       <nav aria-label="Breadcrumb" className="min-w-0">
         <ol className="flex items-center gap-1 text-sm text-[var(--muted-foreground)]">
           <li className="shrink-0">
-            <Link
-              href={`/app/${workspace.id}`}
-              className="hover:text-[var(--foreground)]"
-            >
-              {workspace.name}
-            </Link>
+            {isWorkspaceMember ? (
+              <Link
+                href={`/app/${workspace.id}`}
+                className="hover:text-[var(--foreground)]"
+              >
+                {workspace.name}
+              </Link>
+            ) : (
+              <span>{workspace.name}</span>
+            )}
           </li>
           {ancestors.map((ancestor) => (
             <li key={ancestor.id} className="flex min-w-0 items-center gap-1">
               <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-              <Link
-                href={`/app/${workspace.id}/docs/${ancestor.id}`}
-                className="truncate hover:text-[var(--foreground)]"
-              >
-                {ancestor.title || "Untitled"}
-              </Link>
+              {isWorkspaceMember ? (
+                <Link
+                  href={`/app/${workspace.id}/docs/${ancestor.id}`}
+                  className="truncate hover:text-[var(--foreground)]"
+                >
+                  {ancestor.title || "Untitled"}
+                </Link>
+              ) : (
+                <span className="truncate">{ancestor.title || "Untitled"}</span>
+              )}
             </li>
           ))}
           <li className="flex min-w-0 items-center gap-1">
@@ -176,15 +185,18 @@ export function DocHeader({
       </nav>
 
       <div className="flex items-center gap-1.5">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShareOpen(true)}
-          className="gap-1.5 text-sm font-normal"
-        >
-          <Share2 className="h-3.5 w-3.5" />
-          Share
-        </Button>
+        <SharePopover
+          doc={{
+            id: doc.id,
+            workspaceId: doc.workspaceId,
+            title: doc.title,
+            published: doc.published,
+            publicSlug: doc.publicSlug,
+          }}
+          workspace={workspace}
+          canEdit={canEdit}
+          slack={slack}
+        />
 
         <Button
           variant="ghost"
@@ -251,14 +263,6 @@ export function DocHeader({
         </DropdownMenu>
       </div>
 
-      <ShareDialog
-        open={shareOpen}
-        onOpenChange={setShareOpen}
-        doc={doc}
-        workspace={workspace}
-        canEdit={canEdit}
-        slack={slack}
-      />
       <HistoryPanel
         open={historyOpen}
         onOpenChange={setHistoryOpen}
