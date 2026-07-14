@@ -411,6 +411,13 @@ Long-running processes, sticky sessions, always-on WebSockets, local filesystem 
 3. Confirm email verification links use the same domain.
 4. Clear cookies and retry.
 
+### Emails (invitations, shares, verification) not sending
+
+1. Check `https://your-deployment/api/health` → `env.emailDelivery`. `"console-only"` means `RESEND_API_KEY` and/or `EMAIL_FROM` are **not set** — emails are only logged to the function console, never delivered. Production logs also show a `email.not_configured` warning.
+2. Set `RESEND_API_KEY` and `EMAIL_FROM` in Vercel → Settings → Environment Variables (Production + Preview) and redeploy.
+3. `EMAIL_FROM` must use a domain verified in Resend (e.g. `Docloom <noreply@your-domain.com>`). `onboarding@resend.dev` only delivers to your own Resend account address.
+4. Invitations are never lost on email failure — admins can hit **Resend** in Settings → Members once delivery works.
+
 ### Blob upload failures
 
 1. Confirm Blob store is linked and `BLOB_READ_WRITE_TOKEN` is set.
