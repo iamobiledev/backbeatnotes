@@ -16,8 +16,6 @@ import { getAppUrl } from "@/env/server";
 import { brand } from "@/config/brand";
 import { logger } from "@/lib/logger";
 
-export const runtime = "nodejs";
-
 type BlockActionsPayload = {
   type?: string;
   team?: { id: string };

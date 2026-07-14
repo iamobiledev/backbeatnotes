@@ -6,8 +6,6 @@ import { buildSearchReply } from "@/lib/slack/assistant";
 import { respondViaResponseUrl } from "@/lib/slack/client";
 import { logger } from "@/lib/logger";
 
-export const runtime = "nodejs";
-
 /**
  * `/docs <query>` slash command.
  * Acks immediately with a lightweight message; results are searched and

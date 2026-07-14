@@ -5,8 +5,6 @@ import { getSearchService } from "@/lib/search";
 import { rateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 
-export const runtime = "nodejs";
-
 /**
  * Search endpoint — permission filtering is enforced inside the SQL query.
  */

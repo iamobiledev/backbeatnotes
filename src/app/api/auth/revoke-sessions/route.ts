@@ -5,8 +5,6 @@ import { getAuth } from "@/lib/auth";
 import { getDb, session } from "@/db";
 import { logger } from "@/lib/logger";
 
-export const runtime = "nodejs";
-
 /**
  * Sign out from all devices: revoke every session for the current user.
  */

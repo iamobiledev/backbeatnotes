@@ -20,9 +20,13 @@ export function platformRoleOf(sessionUser: unknown): PlatformRole {
 }
 
 export async function getSession() {
+  // Read request data before constructing Better Auth. Better Auth initializes
+  // internal random IDs, which Cache Components must never execute during
+  // prerender before the request boundary is established.
+  const requestHeaders = await headers();
   const auth = getAuth();
   return auth.api.getSession({
-    headers: await headers(),
+    headers: requestHeaders,
   });
 }
 

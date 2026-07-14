@@ -3,8 +3,6 @@ import { getSession } from "@/lib/session";
 import { uploadWorkspaceFile } from "@/lib/blob/upload";
 import { logger } from "@/lib/logger";
 
-export const runtime = "nodejs";
-
 export async function POST(request: Request) {
   const session = await getSession();
   if (!session?.user) {

@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { expireOldInvitations } from "@/lib/workspaces/service";
 import { logger } from "@/lib/logger";
 
-export const runtime = "nodejs";
-
 /**
  * Protected Vercel Cron: expire pending invitations past their expiry.
  * Configure in vercel.json. Authorize with CRON_SECRET bearer token.

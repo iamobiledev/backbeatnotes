@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 
-export const runtime = "nodejs";
-
 /**
  * Post-deployment health check — does not expose secrets or DB credentials.
  */
@@ -23,7 +21,8 @@ export async function GET() {
           ? "resend"
           : "console-only",
       vercelEnv: process.env.VERCEL_ENV ?? "unknown",
-      region: process.env.VERCEL_REGION ?? process.env.NEON_REGION ?? "unknown",
+      functionRegion: process.env.VERCEL_REGION ?? "unknown",
+      databaseRegion: process.env.NEON_REGION ?? "unknown",
     },
   };
 

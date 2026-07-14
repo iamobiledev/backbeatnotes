@@ -6,8 +6,6 @@ import { getServerEnv, getAppUrl } from "@/env/server";
 import { isSlackConfigured } from "@/lib/slack/status";
 import { createStateToken } from "@/lib/slack/state";
 
-export const runtime = "nodejs";
-
 /** Bot scopes — exactly what the features need, nothing more. */
 export const SLACK_BOT_SCOPES = [
   "links:read",

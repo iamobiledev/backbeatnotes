@@ -6,8 +6,6 @@ import { oauthAccess } from "@/lib/slack/client";
 import { saveConnection } from "@/lib/slack/service";
 import { logger } from "@/lib/logger";
 
-export const runtime = "nodejs";
-
 function settingsRedirect(workspaceId: string, params: Record<string, string>) {
   const url = new URL(`/app/${workspaceId}/settings`, getAppUrl());
   for (const [key, value] of Object.entries(params)) {

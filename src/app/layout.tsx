@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
@@ -46,7 +47,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
-          {children}
+          <Suspense fallback={<RootLoading />}>{children}</Suspense>
           <Toaster
             position="bottom-right"
             toastOptions={{
@@ -62,5 +63,17 @@ export default function RootLayout({
         <SpeedInsights />
       </body>
     </html>
+  );
+}
+
+function RootLoading() {
+  return (
+    <div
+      className="flex min-h-screen items-center justify-center text-sm text-[var(--muted-foreground)]"
+      aria-busy
+      aria-label="Loading page"
+    >
+      Loading…
+    </div>
   );
 }

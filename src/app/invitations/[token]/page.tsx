@@ -11,8 +11,6 @@ import { brand } from "@/config/brand";
 import { getDb, workspaceInvitations, workspaces } from "@/db";
 import { eq } from "drizzle-orm";
 
-export const dynamic = "force-dynamic";
-
 const LEVEL_LABEL: Record<string, string> = {
   full_access: "Full access",
   edit: "Can edit",
