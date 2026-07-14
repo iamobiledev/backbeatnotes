@@ -11,6 +11,14 @@ export type SessionUser = {
   image?: string | null;
 };
 
+export type PlatformRole = "admin" | "developer";
+
+/** Platform user type from the session (admin | developer). */
+export function platformRoleOf(sessionUser: unknown): PlatformRole {
+  const role = (sessionUser as { role?: string } | null)?.role;
+  return role === "admin" ? "admin" : "developer";
+}
+
 export async function getSession() {
   const auth = getAuth();
   return auth.api.getSession({

@@ -32,6 +32,23 @@ export class NeonSearchService implements SearchService {
     const workspaceFilter = input.workspaceId
       ? sql`AND d.workspace_id = ${input.workspaceId}`
       : sql``;
+    const ownerFilter = input.ownerId
+      ? sql`AND d.created_by_id = ${input.ownerId}`
+      : sql``;
+    const updatedFilter = input.updatedAfter
+      ? sql`AND d.updated_at >= ${input.updatedAfter.toISOString()}`
+      : sql``;
+    // Folder filter: restrict to the subtree rooted at parentId.
+    const parentFilter = input.parentId
+      ? sql`AND d.id IN (
+          WITH RECURSIVE subtree AS (
+            SELECT id FROM documents WHERE id = ${input.parentId}
+            UNION ALL
+            SELECT c.id FROM documents c INNER JOIN subtree s ON c.parent_id = s.id
+          )
+          SELECT id FROM subtree
+        )`
+      : sql``;
 
     try {
       const rows = await db.execute(sql`
@@ -55,13 +72,28 @@ export class NeonSearchService implements SearchService {
                    END
                  ) + (EXTRACT(EPOCH FROM d.updated_at) / 1e12) AS score
           FROM documents d
-          INNER JOIN workspace_members wm
+          LEFT JOIN workspace_members wm
             ON wm.workspace_id = d.workspace_id
            AND wm.user_id = ${input.userId}
+          LEFT JOIN document_permissions dp
+            ON dp.document_id = d.id
+           AND dp.user_id = ${input.userId}
           INNER JOIN workspaces w ON w.id = d.workspace_id
           INNER JOIN "user" u ON u.id = d.created_by_id
           WHERE d.archived_at IS NULL
+            -- Permission mirror of computeDocumentAccess: workspace members
+            -- or direct shares; private ("Only people invited") requires
+            -- being the creator or holding a direct share.
+            AND (wm.user_id IS NOT NULL OR dp.user_id IS NOT NULL)
+            AND (
+              d.visibility <> 'private'
+              OR d.created_by_id = ${input.userId}
+              OR dp.user_id IS NOT NULL
+            )
             ${workspaceFilter}
+            ${ownerFilter}
+            ${updatedFilter}
+            ${parentFilter}
             AND (
               lower(d.title) LIKE '%' || lower(${q}) || '%'
               OR similarity(lower(d.title), lower(${q})) > 0.3
@@ -77,7 +109,17 @@ export class NeonSearchService implements SearchService {
           workspace_id,
           title,
           breadcrumb_path,
-          LEFT(plain_text_content, 180) AS snippet,
+          CASE
+            WHEN search_vector @@ plainto_tsquery('english', ${q}) THEN
+              ts_headline(
+                'english',
+                LEFT(plain_text_content, 4000),
+                plainto_tsquery('english', ${q}),
+                'StartSel=⟪, StopSel=⟫, MaxWords=28, MinWords=12, MaxFragments=1'
+              )
+            ELSE LEFT(plain_text_content, 180)
+          END AS snippet,
+          created_by_id AS creator_id,
           score,
           updated_at,
           workspace_name,
@@ -106,6 +148,7 @@ export class NeonSearchService implements SearchService {
           ? String(row.workspace_name)
           : undefined,
         creatorName: row.creator_name ? String(row.creator_name) : undefined,
+        creatorId: row.creator_id ? String(row.creator_id) : undefined,
       }));
 
       return { hits, total, query: q };

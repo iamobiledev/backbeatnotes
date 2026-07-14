@@ -1,13 +1,23 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { requireVerifiedSession } from "@/lib/session";
-import { actionAcceptInvitation } from "@/app/actions";
+import {
+  actionAcceptInvitation,
+  actionAcceptDocumentInvitation,
+} from "@/app/actions";
+import { getDocumentInvitationByToken } from "@/lib/documents/sharing";
 import { Button } from "@/components/ui/button";
 import { brand } from "@/config/brand";
 import { getDb, workspaceInvitations, workspaces } from "@/db";
 import { eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
+
+const LEVEL_LABEL: Record<string, string> = {
+  full_access: "Full access",
+  edit: "Can edit",
+  view: "Can view",
+};
 
 export default async function InvitationPage({
   params,
@@ -35,6 +45,17 @@ export default async function InvitationPage({
     .limit(1);
 
   if (!invitation) {
+    // Not a workspace invitation — maybe a shared-page invitation.
+    const docInvitation = await getDocumentInvitationByToken(token);
+    if (docInvitation) {
+      return (
+        <DocumentInvitationScreen
+          token={token}
+          invitation={docInvitation}
+          sessionEmail={session.user.email}
+        />
+      );
+    }
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
         <h1 className="text-2xl font-semibold">Invitation not found</h1>
@@ -82,6 +103,63 @@ export default async function InvitationPage({
       {!emailMismatch && !expired && !inactive && (
         <form action={accept} className="mt-8">
           <Button type="submit">Accept invitation</Button>
+        </form>
+      )}
+    </main>
+  );
+}
+
+function DocumentInvitationScreen({
+  token,
+  invitation,
+  sessionEmail,
+}: {
+  token: string;
+  invitation: NonNullable<
+    Awaited<ReturnType<typeof getDocumentInvitationByToken>>
+  >;
+  sessionEmail: string;
+}) {
+  async function accept() {
+    "use server";
+    const { documentId, workspaceId } =
+      await actionAcceptDocumentInvitation(token);
+    redirect(`/app/${workspaceId}/docs/${documentId}`);
+  }
+
+  const emailMismatch =
+    invitation.email.toLowerCase() !== sessionEmail.toLowerCase();
+  const expired = invitation.expiresAt.getTime() < new Date().getTime();
+  const inactive = invitation.status !== "pending";
+
+  return (
+    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
+      <p className="font-[family-name:var(--font-display)] text-xl font-semibold text-[var(--primary)]">
+        {brand.name}
+      </p>
+      <h1 className="mt-4 text-2xl font-semibold tracking-tight">
+        {invitation.inviterName ?? "A teammate"} shared “
+        {invitation.documentTitle || "Untitled"}” with you
+      </h1>
+      <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+        Invited as {invitation.email} ·{" "}
+        {LEVEL_LABEL[invitation.level] ?? invitation.level}
+      </p>
+
+      {emailMismatch && (
+        <p className="mt-4 text-sm text-[var(--destructive)]">
+          Sign in as {invitation.email} to open this page.
+        </p>
+      )}
+      {(expired || inactive) && (
+        <p className="mt-4 text-sm text-[var(--destructive)]">
+          This invitation is no longer valid.
+        </p>
+      )}
+
+      {!emailMismatch && !expired && !inactive && (
+        <form action={accept} className="mt-8">
+          <Button type="submit">Open the page</Button>
         </form>
       )}
     </main>

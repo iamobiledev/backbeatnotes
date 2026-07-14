@@ -45,6 +45,37 @@ export const documentVisibilityEnum = pgEnum("document_visibility", [
   "public",
 ]);
 
+export const documentTypeEnum = pgEnum("document_type", ["doc", "wiki"]);
+
+/**
+ * Per-document access levels for direct shares (Notion-style):
+ * - full_access: edit + manage sharing
+ * - edit: edit content
+ * - view: read-only
+ */
+export const documentPermissionLevelEnum = pgEnum("document_permission_level", [
+  "full_access",
+  "edit",
+  "view",
+]);
+
+export const documentActivityActionEnum = pgEnum("document_activity_action", [
+  "created",
+  "edited",
+  "renamed",
+  "moved",
+  "trashed",
+  "restored",
+  "published",
+  "unpublished",
+  "version_restored",
+  "locked",
+  "unlocked",
+  "shared",
+  "unshared",
+  "general_access_changed",
+]);
+
 /* -------------------------------------------------------------------------- */
 /* Better Auth core tables                                                     */
 /* -------------------------------------------------------------------------- */
@@ -55,6 +86,12 @@ export const user = pgTable("user", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
   image: text("image"),
+  /** Platform user type: admins can create workspaces + manage locked wikis. */
+  role: text("role", { enum: ["admin", "developer"] })
+    .notNull()
+    .default("developer"),
+  /** Opt-out toggle for document-activity email notifications. */
+  emailNotifications: boolean("email_notifications").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -135,6 +172,12 @@ export const workspaces = pgTable(
     slug: text("slug").notNull(),
     iconUrl: text("icon_url"),
     iconBlobPathname: text("icon_blob_pathname"),
+    /**
+     * Personal notebooks are single-member workspaces provisioned per user.
+     * They can never be shared: invitations and membership changes are
+     * rejected server-side for personal workspaces.
+     */
+    isPersonal: boolean("is_personal").notNull().default(false),
     createdById: text("created_by_id")
       .notNull()
       .references(() => user.id, { onDelete: "restrict" }),
@@ -145,7 +188,12 @@ export const workspaces = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [uniqueIndex("workspaces_slug_uidx").on(t.slug)],
+  (t) => [
+    uniqueIndex("workspaces_slug_uidx").on(t.slug),
+    uniqueIndex("workspaces_personal_owner_uidx")
+      .on(t.createdById)
+      .where(sql`${t.isPersonal}`),
+  ],
 );
 
 export const workspaceMembers = pgTable(
@@ -188,6 +236,10 @@ export const workspaceInvitations = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    /** When the invite email was last (re)sent. */
+    lastSentAt: timestamp("last_sent_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -217,6 +269,13 @@ export const documents = pgTable(
     visibility: documentVisibilityEnum("visibility")
       .notNull()
       .default("workspace"),
+    /** Document type — wikis can be locked to admin-only editing. */
+    docType: documentTypeEnum("doc_type").notNull().default("doc"),
+    /** When set, the wiki is locked: only admins can edit or unlock. */
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    lockedById: text("locked_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
     /** TipTap JSON document */
     contentJson: jsonb("content_json").$type<Record<string, unknown>>().notNull().default({}),
     /** Normalized plain text for search */
@@ -253,6 +312,137 @@ export const documents = pgTable(
       sql`${t.title} gin_trgm_ops`,
     ),
     index("documents_search_vector_idx").using("gin", t.searchVector),
+  ],
+);
+
+/**
+ * Direct per-document shares (Notion-style "Share" popover).
+ * Grants access to a single page, independent of workspace membership —
+ * this is how pages are shared with people outside the workspace and how
+ * "Only people invited" pages are opened up to specific teammates.
+ */
+export const documentPermissions = pgTable(
+  "document_permissions",
+  {
+    id: text("id").primaryKey(),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    level: documentPermissionLevelEnum("level").notNull().default("view"),
+    invitedById: text("invited_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("document_permissions_doc_user_uidx").on(t.documentId, t.userId),
+    index("document_permissions_user_idx").on(t.userId),
+  ],
+);
+
+/**
+ * Pending document shares for emails without an account yet.
+ * Accepting the emailed link (after sign-up) converts the invitation into a
+ * document_permissions row.
+ */
+export const documentInvitations = pgTable(
+  "document_invitations",
+  {
+    id: text("id").primaryKey(),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    level: documentPermissionLevelEnum("level").notNull().default("view"),
+    token: text("token").notNull(),
+    status: invitationStatusEnum("status").notNull().default("pending"),
+    invitedById: text("invited_by_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    /** When the invite email was last (re)sent. */
+    lastSentAt: timestamp("last_sent_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("document_invitations_token_uidx").on(t.token),
+    index("document_invitations_email_idx").on(t.email),
+    index("document_invitations_doc_idx").on(t.documentId),
+    index("document_invitations_expires_idx").on(t.expiresAt),
+  ],
+);
+
+/**
+ * Per-document audit log: who did what, when.
+ * `edited` rows are coalesced per user within a 15-minute window so the log
+ * stays readable under constant autosave traffic.
+ */
+export const documentActivity = pgTable(
+  "document_activity",
+  {
+    id: text("id").primaryKey(),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    action: documentActivityActionEnum("action").notNull(),
+    /** Action context, e.g. { from, to } for renames, charDelta for edits. */
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    /** Coalescing window end for `edited` rows. */
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("document_activity_doc_created_idx").on(t.documentId, t.updatedAt),
+    index("document_activity_user_idx").on(t.userId),
+  ],
+);
+
+/** Throttle log for outbound notification emails (one row per send). */
+export const notificationLog = pgTable(
+  "notification_log",
+  {
+    id: text("id").primaryKey(),
+    recipientId: text("recipient_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    documentId: text("document_id").references(() => documents.id, {
+      onDelete: "cascade",
+    }),
+    type: text("type").notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("notification_log_recipient_doc_idx").on(
+      t.recipientId,
+      t.documentId,
+      t.type,
+      t.sentAt,
+    ),
   ],
 );
 
@@ -358,6 +548,78 @@ export const files = pgTable(
 );
 
 /* -------------------------------------------------------------------------- */
+/* Slack integration                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One Slack team connection per Docloom workspace, installed by an admin.
+ * The bot token is encrypted at rest (AES-256-GCM, see src/lib/slack/crypto).
+ */
+export const slackConnections = pgTable(
+  "slack_connections",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    slackTeamId: text("slack_team_id").notNull(),
+    slackTeamName: text("slack_team_name").notNull(),
+    /** AES-256-GCM encrypted bot token (iv:tag:ciphertext, base64). */
+    encryptedBotToken: text("encrypted_bot_token").notNull(),
+    botUserId: text("bot_user_id").notNull(),
+    scopes: text("scopes").notNull().default(""),
+    installedById: text("installed_by_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("slack_connections_workspace_uidx").on(t.workspaceId),
+    index("slack_connections_team_idx").on(t.slackTeamId),
+  ],
+);
+
+/** Links a Docloom user to their Slack identity in a specific Slack team. */
+export const slackUserLinks = pgTable(
+  "slack_user_links",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    slackTeamId: text("slack_team_id").notNull(),
+    slackUserId: text("slack_user_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("slack_user_links_team_slack_user_uidx").on(
+      t.slackTeamId,
+      t.slackUserId,
+    ),
+    uniqueIndex("slack_user_links_user_team_uidx").on(t.userId, t.slackTeamId),
+  ],
+);
+
+/** Idempotency guard for Slack event redelivery (pruned by cron). */
+export const slackEvents = pgTable(
+  "slack_events",
+  {
+    eventKey: text("event_key").primaryKey(),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("slack_events_received_idx").on(t.receivedAt)],
+);
+
+/* -------------------------------------------------------------------------- */
 /* Relations                                                                   */
 /* -------------------------------------------------------------------------- */
 
@@ -396,3 +658,5 @@ export type WorkspaceMember = typeof workspaceMembers.$inferSelect;
 export type Document = typeof documents.$inferSelect;
 export type FileRecord = typeof files.$inferSelect;
 export type WorkspaceInvitation = typeof workspaceInvitations.$inferSelect;
+export type DocumentPermission = typeof documentPermissions.$inferSelect;
+export type DocumentInvitation = typeof documentInvitations.$inferSelect;

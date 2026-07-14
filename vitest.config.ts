@@ -11,6 +11,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // Allow importing server modules in tests.
+      "server-only": path.resolve(__dirname, "./vitest.server-only-stub.ts"),
       "@": path.resolve(__dirname, "./src"),
     },
   },

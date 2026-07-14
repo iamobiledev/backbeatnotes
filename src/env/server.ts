@@ -37,6 +37,23 @@ const serverEnvSchema = z.object({
 
   /** Optional: document Neon primary region */
   NEON_REGION: z.string().optional(),
+
+  /* --- Slack integration (all optional; features disable gracefully) --- */
+  /** Slack app client id (from api.slack.com → App credentials) */
+  SLACK_CLIENT_ID: z.string().min(1).optional(),
+  /** Slack app client secret */
+  SLACK_CLIENT_SECRET: z.string().min(1).optional(),
+  /** Slack app signing secret — verifies incoming Slack requests */
+  SLACK_SIGNING_SECRET: z.string().min(1).optional(),
+  /** 32-byte base64 key for encrypting Slack tokens at rest.
+   *  Generate with: openssl rand -base64 32 */
+  SLACK_TOKEN_ENCRYPTION_KEY: z.string().min(32).optional(),
+  /** Override the Slack API base URL (tests/mocks only) */
+  SLACK_API_BASE: z.string().url().optional(),
+
+  /* --- Optional LLM for the @docloom Slack assistant --- */
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  OPENAI_API_KEY: z.string().min(1).optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -79,6 +96,13 @@ export function getServerEnv(): ServerEnv {
       BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
       CRON_SECRET: process.env.CRON_SECRET,
       NEON_REGION: process.env.NEON_REGION,
+      SLACK_CLIENT_ID: process.env.SLACK_CLIENT_ID,
+      SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET,
+      SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
+      SLACK_TOKEN_ENCRYPTION_KEY: process.env.SLACK_TOKEN_ENCRYPTION_KEY,
+      SLACK_API_BASE: process.env.SLACK_API_BASE,
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     };
     return cached;
   }
@@ -99,6 +123,13 @@ export function getServerEnv(): ServerEnv {
     BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
     CRON_SECRET: process.env.CRON_SECRET,
     NEON_REGION: process.env.NEON_REGION,
+    SLACK_CLIENT_ID: process.env.SLACK_CLIENT_ID,
+    SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET,
+    SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
+    SLACK_TOKEN_ENCRYPTION_KEY: process.env.SLACK_TOKEN_ENCRYPTION_KEY,
+    SLACK_API_BASE: process.env.SLACK_API_BASE,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   });
 
   if (!parsed.success) {

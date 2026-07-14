@@ -1,9 +1,9 @@
-import "dotenv/config";
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import { config as loadEnv } from "dotenv";
+loadEnv({ path: [".env.local", ".env"], quiet: true });
 import { hashPassword } from "better-auth/crypto";
 import { nanoid } from "nanoid";
 import * as schema from "../src/db/schema";
+import { createDatabase } from "../src/db/create-db";
 import { brand } from "../src/config/brand";
 
 /**
@@ -26,8 +26,7 @@ async function main() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is required");
 
-  const sql = neon(url);
-  const db = drizzle(sql, { schema });
+  const db = createDatabase(url);
 
   const email = process.env.SEED_USER_EMAIL ?? "demo@docloom.local";
   const password = process.env.SEED_USER_PASSWORD ?? "DocloomDemo123!";
@@ -45,6 +44,7 @@ async function main() {
       name,
       email,
       emailVerified: true,
+      role: "admin", // demo user is a platform admin
     });
 
     const hashed = await hashPassword(password);
@@ -57,7 +57,13 @@ async function main() {
     });
     console.log(`Created user ${email}`);
   } else {
-    console.log(`User ${email} already exists`);
+    // Keep the demo user a platform admin across re-seeds.
+    const { eq } = await import("drizzle-orm");
+    await db
+      .update(schema.user)
+      .set({ role: "admin" })
+      .where(eq(schema.user.id, userId));
+    console.log(`User ${email} already exists (ensured admin role)`);
   }
 
   const existingWs = await db.query.workspaces.findFirst({
@@ -114,12 +120,66 @@ async function main() {
     console.log("Created welcome document");
   }
 
+  // A second verified user with no membership in the demo workspace —
+  // useful for testing permissions locally (request access, private docs).
+  const outsiderEmail =
+    process.env.SEED_OUTSIDER_EMAIL ?? "teammate@docloom.local";
+  const existingOutsider = await db.query.user.findFirst({
+    where: (u, { eq }) => eq(u.email, outsiderEmail),
+  });
+  let outsiderId = existingOutsider?.id;
+  if (!outsiderId) {
+    outsiderId = nanoid();
+    await db.insert(schema.user).values({
+      id: outsiderId,
+      name: "Taylor Teammate",
+      email: outsiderEmail,
+      emailVerified: true,
+      role: "developer",
+    });
+    await db.insert(schema.account).values({
+      id: nanoid(),
+      accountId: outsiderId,
+      providerId: "credential",
+      userId: outsiderId,
+      password: await hashPassword(password),
+    });
+    console.log(`Created user ${outsiderEmail} (no workspace membership)`);
+  }
+
+  // Demo of page-level sharing: give the outsider view access to one doc
+  // ("Shared" sidebar section + Notion-style Share popover people list).
+  const sharedDoc = await db.query.documents.findFirst({
+    where: (d, { eq }) => eq(d.workspaceId, workspaceId!),
+  });
+  if (sharedDoc) {
+    const existingGrant = await db.query.documentPermissions.findFirst({
+      where: (p, { and, eq }) =>
+        and(eq(p.documentId, sharedDoc.id), eq(p.userId, outsiderId!)),
+    });
+    if (!existingGrant) {
+      await db.insert(schema.documentPermissions).values({
+        id: nanoid(),
+        documentId: sharedDoc.id,
+        userId: outsiderId,
+        level: "view",
+        invitedById: userId!,
+      });
+      console.log(
+        `Shared "${sharedDoc.title}" with ${outsiderEmail} (Can view)`,
+      );
+    }
+  }
+
   console.log("\nSeed complete.");
   console.log(`  Email:    ${email}`);
   console.log(`  Password: ${password}`);
+  console.log(`  Outsider: ${outsiderEmail} (same password)`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

@@ -8,9 +8,13 @@ export function extractPlainText(node: unknown): string {
     type?: string;
     text?: string;
     content?: unknown[];
+    attrs?: { title?: string };
   };
 
   if (n.text) return n.text;
+
+  // Sub-page blocks carry their linked page title as an attribute.
+  if (n.type === "subpage") return n.attrs?.title ?? "";
 
   if (!Array.isArray(n.content)) return "";
 

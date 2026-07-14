@@ -1,15 +1,16 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { BookOpen, Clock, FileText, Lock, Plus, Star } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 import { requireVerifiedSession } from "@/lib/session";
 import {
   getRecentDocuments,
   listWorkspaceDocuments,
+  listFavoriteDocuments,
   listUserWorkspaces,
 } from "@/lib/documents/service";
 import { actionCreateDocument } from "@/app/actions";
-import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { SearchBox } from "@/components/search/search-box";
 
 export default async function WorkspacePage({
   params,
@@ -22,10 +23,13 @@ export default async function WorkspacePage({
   const workspace = workspaces.find((w) => w.id === workspaceId);
   if (!workspace) notFound();
 
-  const [docs, recent] = await Promise.all([
+  const [docs, recent, favorites] = await Promise.all([
     listWorkspaceDocuments(session.user.id, workspaceId),
     getRecentDocuments(session.user.id, workspaceId),
+    listFavoriteDocuments(session.user.id, workspaceId),
   ]);
+
+  const canEdit = workspace.role !== "guest";
 
   async function createDoc() {
     "use server";
@@ -36,72 +40,172 @@ export default async function WorkspacePage({
     redirect(`/app/${workspaceId}/docs/${doc.id}`);
   }
 
+  async function createWiki() {
+    "use server";
+    const formData = new FormData();
+    formData.set("workspaceId", workspaceId);
+    formData.set("title", "Untitled");
+    formData.set("docType", "wiki");
+    const doc = await actionCreateDocument(formData);
+    redirect(`/app/${workspaceId}/docs/${doc.id}`);
+  }
+
   return (
-    <div className="space-y-10">
+    <div className="mx-auto max-w-4xl space-y-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight">
             {workspace.name}
           </h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            {docs.length} documents
+            {workspace.isPersonal
+              ? "Only you can see the pages in your personal notebook."
+              : `${docs.length} ${docs.length === 1 ? "page" : "pages"}`}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button asChild variant="outline">
-            <Link href={`/app/${workspaceId}/settings`}>Settings</Link>
-          </Button>
-          <form action={createDoc}>
-            <Button type="submit">New document</Button>
-          </form>
+        {canEdit && (
+          <div className="flex gap-2">
+            <form action={createWiki}>
+              <Button type="submit" variant="outline" className="gap-1.5">
+                <BookOpen className="h-4 w-4" />
+                New wiki
+              </Button>
+            </form>
+            <form action={createDoc}>
+              <Button type="submit" className="gap-1.5">
+                <Plus className="h-4 w-4" />
+                New page
+              </Button>
+            </form>
+          </div>
+        )}
+      </div>
+
+      {docs.length === 0 ? (
+        <div className="flex flex-col items-center rounded-lg border border-dashed border-[var(--border)] py-20 text-center">
+          <FileText className="h-9 w-9 text-[var(--muted-foreground)]" />
+          <h2 className="mt-4 text-lg font-medium">
+            {workspace.isPersonal
+              ? "Your notebook is empty"
+              : "No pages here yet"}
+          </h2>
+          <p className="mt-1 max-w-sm text-sm text-[var(--muted-foreground)]">
+            {canEdit
+              ? "Create your first page to capture notes, docs, and ideas. Press N anywhere to start writing."
+              : "Pages your teammates create will show up here."}
+          </p>
+          {canEdit && (
+            <form action={createDoc} className="mt-6">
+              <Button type="submit" className="gap-1.5">
+                <Plus className="h-4 w-4" />
+                Create your first page
+              </Button>
+            </form>
+          )}
         </div>
-      </div>
-
-      <div className="md:hidden">
-        <SearchBox workspaceId={workspaceId} />
-      </div>
-
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-          Recently updated
-        </h2>
-        <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-          {recent.map((doc) => (
-            <li key={doc.id}>
-              <Link
-                href={`/app/${workspaceId}/docs/${doc.id}`}
-                className="block rounded-md border border-transparent px-3 py-2 hover:border-[var(--border)] hover:bg-[var(--card)]"
+      ) : (
+        <>
+          {favorites.length > 0 && (
+            <section aria-labelledby="favorites-heading">
+              <h2
+                id="favorites-heading"
+                className="flex items-center gap-1.5 text-sm font-medium text-[var(--muted-foreground)]"
               >
-                <div className="font-medium">{doc.title}</div>
-                <div className="text-xs text-[var(--muted-foreground)]">
-                  {doc.updatedAt.toLocaleString()}
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
+                <Star className="h-3.5 w-3.5" />
+                Favorites
+              </h2>
+              <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                {favorites.map((doc) => (
+                  <li key={doc.id}>
+                    <Link
+                      href={`/app/${workspaceId}/docs/${doc.id}`}
+                      className="block rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 transition-colors hover:border-[var(--primary)]"
+                    >
+                      <span className="block truncate font-medium">
+                        {doc.icon && <span className="mr-1.5">{doc.icon}</span>}
+                        {doc.title || "Untitled"}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-[var(--muted-foreground)]">
+                        Updated{" "}
+                        {formatDistanceToNow(doc.updatedAt, {
+                          addSuffix: true,
+                        })}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-          All documents
-        </h2>
-        <ul className="mt-3 divide-y divide-[var(--border)]">
-          {docs.map((doc) => (
-            <li key={doc.id}>
-              <Link
-                href={`/app/${workspaceId}/docs/${doc.id}`}
-                className="flex items-center justify-between py-3 hover:text-[var(--primary)]"
-              >
-                <span>{doc.title}</span>
-                <span className="text-xs text-[var(--muted-foreground)]">
-                  {doc.visibility}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
+          <section aria-labelledby="recent-heading">
+            <h2
+              id="recent-heading"
+              className="flex items-center gap-1.5 text-sm font-medium text-[var(--muted-foreground)]"
+            >
+              <Clock className="h-3.5 w-3.5" />
+              Recent
+            </h2>
+            <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+              {recent.slice(0, 6).map((doc) => (
+                <li key={doc.id}>
+                  <Link
+                    href={`/app/${workspaceId}/docs/${doc.id}`}
+                    className="block rounded-md border border-transparent px-3 py-2 transition-colors hover:border-[var(--border)] hover:bg-[var(--card)]"
+                  >
+                    <span className="block truncate font-medium">
+                      {doc.icon && <span className="mr-1.5">{doc.icon}</span>}
+                      {doc.title || "Untitled"}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-[var(--muted-foreground)]">
+                      {formatDistanceToNow(doc.updatedAt, { addSuffix: true })}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section aria-labelledby="all-heading">
+            <h2
+              id="all-heading"
+              className="flex items-center gap-1.5 text-sm font-medium text-[var(--muted-foreground)]"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              All pages
+            </h2>
+            <ul className="mt-3 divide-y divide-[var(--border)] rounded-lg border border-[var(--border)] bg-[var(--card)]">
+              {docs.map((doc) => (
+                <li key={doc.id}>
+                  <Link
+                    href={`/app/${workspaceId}/docs/${doc.id}`}
+                    className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-[var(--muted)]"
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5 truncate">
+                      {doc.icon && <span>{doc.icon}</span>}
+                      {doc.docType === "wiki" && (
+                        <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--primary)]" />
+                      )}
+                      <span className="truncate">{doc.title || "Untitled"}</span>
+                      {doc.lockedAt && (
+                        <Lock className="h-3 w-3 shrink-0 text-[var(--muted-foreground)]" />
+                      )}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-3 text-xs text-[var(--muted-foreground)]">
+                      {doc.publishedAt && (
+                        <span className="rounded-full bg-[var(--hero-wash)] px-2 py-0.5 font-medium text-[var(--primary)]">
+                          Published
+                        </span>
+                      )}
+                      {formatDistanceToNow(doc.updatedAt, { addSuffix: true })}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </>
+      )}
     </div>
   );
 }

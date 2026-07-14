@@ -2,6 +2,7 @@ import "server-only";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
+import { sql } from "drizzle-orm";
 import { getDb, user, session, account, verification } from "@/db";
 import { getAppUrl, getServerEnv } from "@/env/server";
 import {
@@ -58,7 +59,38 @@ export function createAuth() {
       },
     },
     user: {
-      additionalFields: {},
+      additionalFields: {
+        /** Platform user type: 'admin' | 'developer'. Never client-settable. */
+        role: {
+          type: "string",
+          defaultValue: "developer",
+          input: false,
+        },
+        /** Document-activity email opt-out. */
+        emailNotifications: {
+          type: "boolean",
+          defaultValue: true,
+          input: false,
+        },
+      },
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          // Bootstrap: the very first account becomes a platform admin.
+          before: async (newUser) => {
+            const [{ count }] = (
+              await db.execute(sql`SELECT count(*)::int AS count FROM "user"`)
+            ).rows as Array<{ count: number }>;
+            return {
+              data: {
+                ...newUser,
+                role: Number(count) === 0 ? "admin" : "developer",
+              },
+            };
+          },
+        },
+      },
     },
     plugins: [nextCookies()],
     trustedOrigins: [getAppUrl()],

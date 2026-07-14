@@ -8,6 +8,41 @@
       "when": 1710000000000,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783825986716,
+      "tag": "0001_living_reavers",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783828072012,
+      "tag": "0002_thin_wendell_vaughn",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783866791134,
+      "tag": "0003_numerous_havok",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783866926325,
+      "tag": "0004_cloudy_captain_flint",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783982839696,
+      "tag": "0005_rare_wrecker",
+      "breakpoints": true
     }
   ]
 }

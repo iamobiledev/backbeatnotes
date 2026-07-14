@@ -1,6 +1,6 @@
 "use client";
 
-import { DocumentEditor } from "@/components/editor/document-editor";
+import { ReadOnlyDoc } from "@/components/documents/read-only-doc";
 import { brand } from "@/config/brand";
 import Link from "next/link";
 
@@ -28,13 +28,10 @@ export function PublicDocumentView({
           Published · {new Date(updatedAt).toLocaleDateString()} · {creatorName}
         </p>
       </header>
-      <DocumentEditor
-        documentId="public"
-        initialTitle={title}
-        initialContent={contentJson}
-        onSave={async () => undefined}
-        readOnly
-      />
+      <h1 className="mb-6 font-[family-name:var(--font-display)] text-4xl tracking-tight">
+        {title}
+      </h1>
+      <ReadOnlyDoc contentJson={contentJson} />
     </main>
   );
 }

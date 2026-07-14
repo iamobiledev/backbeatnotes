@@ -4,6 +4,19 @@
 
 Docloom is a Vercel-first collaborative knowledge base built with Next.js (App Router), Neon Postgres, Better Auth, Tiptap, and Vercel Blob. Product naming lives in `src/config/brand.ts` so the temporary name is easy to replace later.
 
+## Features
+
+- **Documents** — rich-text editing (headings, lists, checkboxes, code blocks, links, inline images) with debounced autosave and a live *Saved* indicator; Notion-style page hierarchy with a collapsible sidebar tree.
+- **Wikis** — a second document type for canonical team knowledge. Wikis can be **locked** by admins: locked wikis are read-only for everyone except workspace owners/admins and platform admins.
+- **Change log** — every page has an Activity history (who created/edited/renamed/moved/trashed/published/locked it, when) with autosave edits coalesced into readable sessions, alongside restorable version snapshots.
+- **Organization** — favorites, recently-viewed, soft-delete trash with restore (nothing is permanently deleted from the UI), and automatic version snapshots on significant edits with preview + restore.
+- **Sharing & permissions** — Notion-style page sharing from the **Share** popover (Share | Publish tabs): invite anyone by email with **Full access / Can edit / Can view**, including people outside the workspace (emails without an account get a pending invitation that converts on sign-up); a per-page **General access** switch between *Only people invited* and *Everyone at {workspace}*; a **Shared** sidebar section for pages shared with you. Every user also gets a private **Personal notebook** (its pages are invite-only but individually shareable); team workspaces where every member sees every workspace-visible page (admins manage members, editors write, viewers read); publish-to-web for public read-only pages (independent of in-app access); and a request-access screen (never an error) for links you can't open.
+- **User types** — platform `admin` (creates team workspaces, locks/edits locked wikis) and `developer` (regular user). The first registered user automatically becomes an admin.
+- **Email notifications** — invitation emails, "you've joined a workspace" + "your invite was accepted" emails, and document-activity alerts to a page's creator and previous editors (throttled to one email per person per page per 6 hours, per-user opt-out in Settings → Notifications). Pending invitations show when the email was sent, with one-click resend.
+- **Search** — fast Postgres full-text + trigram search with weighted ranking (exact title → prefix → fuzzy → body → recency), a global **⌘K / Ctrl+K** palette with highlighted snippets and owner/date/scope filters, permission-filtered inside SQL.
+- **Slack integration** — paste a doc link in Slack and get a rich inline preview (permission-aware), search with `/docs` or by mentioning `@docloom` in natural language (optionally LLM-assisted), and share pages into channels from the app's share dialog. See [Slack integration](#slack-integration).
+- **Polish** — keyboard shortcuts (press `?` in the app), loading skeletons, empty states, toasts, responsive layout with a mobile drawer.
+
 ## Stack
 
 | Layer | Choice |
@@ -33,7 +46,16 @@ pnpm db:seed
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Seed credentials default to `demo@docloom.local` / `DocloomDemo123!`.
+Open [http://localhost:3000](http://localhost:3000). Seed credentials default to `demo@docloom.local` / `DocloomDemo123!` (plus `teammate@docloom.local`, a second verified user with no workspace membership — handy for testing permissions).
+
+**No Neon account needed for local dev:** when `DATABASE_URL` points at `localhost` (or `DATABASE_DRIVER=pg` is set), the app automatically uses the `node-postgres` driver instead of the Neon HTTP driver. A plain local PostgreSQL 16 with the `pg_trgm` and `unaccent` extensions works:
+
+```bash
+sudo -u postgres psql -c "CREATE ROLE docloom LOGIN PASSWORD 'docloom' SUPERUSER;"
+sudo -u postgres createdb -O docloom docloom
+sudo -u postgres psql -d docloom -c "CREATE EXTENSION pg_trgm; CREATE EXTENSION unaccent;"
+# .env.local → DATABASE_URL=postgresql://docloom:docloom@localhost:5432/docloom
+```
 
 ### Scripts
 
@@ -65,6 +87,11 @@ See [`.env.example`](./.env.example) for the full list. Required for a working d
 | `RESEND_API_KEY` / `EMAIL_FROM` | Server | Transactional email (console fallback in local) |
 | `BLOB_READ_WRITE_TOKEN` | Server | Vercel Blob store token |
 | `CRON_SECRET` | Server | Bearer token for Cron routes |
+| `SLACK_CLIENT_ID` | Server | Slack app client id (optional — enables the Slack integration) |
+| `SLACK_CLIENT_SECRET` | Server | Slack app client secret |
+| `SLACK_SIGNING_SECRET` | Server | Verifies incoming Slack webhooks |
+| `SLACK_TOKEN_ENCRYPTION_KEY` | Server | 32-byte base64 key (`openssl rand -base64 32`) — encrypts Slack bot tokens at rest |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | Server | Optional — lets `@docloom` interpret natural-language requests with an LLM (heuristic fallback without) |
 
 Typed validation lives in `src/env/server.ts` (server-only) and `src/env/client.ts` (browser-safe). Missing required vars fail with a clear message. Database credentials are never exposed to the browser.
 
@@ -141,6 +168,9 @@ Supported flows: email/password, email verification, password reset, secure sess
 1. Create a [Resend](https://resend.com) API key and verified domain.
 2. Set `RESEND_API_KEY` and `EMAIL_FROM` (e.g. `Docloom <noreply@your-domain.com>`).
 3. Without these, the console email provider logs messages (local-friendly).
+4. For quick testing before a domain is verified, `EMAIL_FROM=Docloom <onboarding@resend.dev>` works, but Resend only delivers it to your own account address — switch to a verified domain for real recipients.
+
+Emails sent: verification/reset (auth), workspace invitations (+ resend), joined-workspace + invitation-accepted confirmations, and throttled document-activity alerts (opt-out per user under Settings → Notifications).
 
 The provider interface is in `src/lib/email/` — swap Resend without changing call sites.
 
@@ -193,14 +223,20 @@ curl https://your-deployment.vercel.app/api/health
 
 Expect `{ "ok": true, "service": "docloom", ... }` without secrets.
 
-### 12. Playwright smoke tests
+### 12. Tests
 
 ```bash
-# Against a running local server after `pnpm build && pnpm start`
-pnpm test:e2e
+pnpm test                # unit tests (access matrix, unfurl matrix, crypto, signatures, versioning, blocks, rate limiter)
+TEST_DATABASE_URL=postgresql://… pnpm test   # + search-ranking/permission integration tests against a real Postgres
+
+# Playwright e2e (full product flows; requires a seeded database)
+E2E_HAS_DATABASE=1 PLAYWRIGHT_BASE_URL=http://localhost:3000 pnpm test:e2e
 
 # Against a deployed preview or production URL
 PLAYWRIGHT_BASE_URL=https://your-preview.vercel.app pnpm test:e2e
+
+# Slack integration simulation (see “Slack integration → Testing without Slack”)
+python3 scripts/slack-sim.py
 ```
 
 ### Rolling back a deployment
@@ -218,11 +254,98 @@ PLAYWRIGHT_BASE_URL=https://your-preview.vercel.app pnpm test:e2e
 
 ---
 
+## Slack integration
+
+The goal: find and share docs without leaving Slack, and make any pasted doc link render as a rich inline preview (like Notion links do).
+
+**What you get once connected:**
+
+| Feature | How |
+| --- | --- |
+| Inline link previews (unfurls) | Paste any doc link in Slack → rich card with title, ~200-char excerpt, author, last-edited time, and an *Open in Docloom* button. Permission-aware: private/trashed/deleted docs and links shared by unlinked users render a neutral "open in Docloom to view" card — content never leaks. |
+| `/docs <query>` | Ephemeral search results (permission-filtered to *your* linked identity) with *Open* and *Share to channel* buttons. |
+| `@docloom find the onboarding doc` | Mention the bot in natural language — it extracts the query (with Claude/OpenAI if a key is configured, a solid heuristic otherwise) and replies in-thread with document cards. |
+| Share to Slack from the app | In any page's Share dialog: pick a channel, add an optional message, post a rich card. |
+
+### 1. Create the Slack app
+
+1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From a manifest**.
+2. Pick your Slack workspace, then paste the contents of [`slack-app-manifest.json`](./slack-app-manifest.json), replacing every `YOUR_APP_DOMAIN` with your deployed domain (e.g. `docloom.vercel.app`) — or your ngrok domain for local testing.
+3. Create the app. Under **Basic Information → App Credentials**, copy the **Client ID**, **Client Secret**, and **Signing Secret**.
+
+The manifest requests only the scopes the features need: `links:read`, `links:write`, `chat:write`, `commands`, `app_mentions:read` (bot) and `openid email` (user identity linking).
+
+### 2. Configure environment variables
+
+```bash
+SLACK_CLIENT_ID=…
+SLACK_CLIENT_SECRET=…
+SLACK_SIGNING_SECRET=…
+SLACK_TOKEN_ENCRYPTION_KEY=$(openssl rand -base64 32)
+# optional, for smarter @docloom mentions:
+ANTHROPIC_API_KEY=…   # or OPENAI_API_KEY=…
+```
+
+Redeploy (or restart `pnpm dev`). Without these variables every Slack surface shows an honest "not configured" state — nothing breaks.
+
+### 3. Connect a workspace
+
+1. In Docloom: **Settings → Slack → Connect Slack** (workspace admins only). This runs the OAuth install; the bot token is stored encrypted (AES-256-GCM) in Postgres.
+2. Each user who wants permission-aware search/unfurls clicks **Settings → Slack → Link my account** (Sign in with Slack, OIDC).
+3. In Slack, `/invite @docloom` into channels where you want the bot to post shared cards.
+
+Slack will verify the events URL (`/api/slack/events`) when the app is created — the endpoint answers the `url_verification` challenge automatically.
+
+### 4. Local development with ngrok
+
+Slack must be able to reach your machine for events/commands:
+
+```bash
+ngrok http 3000
+# → https://<random>.ngrok-free.app
+```
+
+1. Use the ngrok domain as `YOUR_APP_DOMAIN` in the manifest (or update the URLs under **Event Subscriptions**, **Interactivity**, **Slash Commands**, **OAuth redirect URLs**, and **unfurl domains** in the app settings).
+2. Set `NEXT_PUBLIC_APP_URL=https://<random>.ngrok-free.app` in `.env.local` so generated doc links use a domain Slack will unfurl.
+3. Restart `pnpm dev` and install the app into your Slack workspace.
+
+### 5. Testing without Slack at all
+
+`scripts/slack-stub.mjs` is a tiny local mock of the Slack API:
+
+```bash
+node scripts/slack-stub.mjs                 # listens on :4571
+# .env.local → SLACK_API_BASE=http://localhost:4571
+python3 scripts/slack-sim.py                # simulates signed Slack webhooks end-to-end
+curl http://localhost:4571/calls            # inspect exactly what the app sent to "Slack"
+```
+
+The simulation suite covers the signature checks, the 3-second ack budget, event redelivery idempotency, the full unfurl permission matrix, `@docloom` mentions, `/docs`, and share-to-channel.
+
+### Reliability & security notes
+
+- All Slack endpoints verify the `v0` request signature (HMAC, ±5 min replay window) before doing anything, and are rate-limited.
+- Handlers ack immediately; doc lookups, card rendering, and Slack API calls run after the response (`next/server`'s `after()`), keeping well inside Slack's 3-second window.
+- Event redeliveries are deduplicated via a `slack_events` idempotency table (pruned daily by cron).
+- Slack API failures are logged with context and degrade gracefully — a failed unfurl never breaks anything user-facing.
+- Bot tokens are encrypted at rest; unfurl decisions are unit-tested as a security matrix (`src/lib/slack/__tests__`).
+
+---
+
 ## Architecture notes
 
 ### Authorization
 
 Workspace IDs, roles, and permissions are resolved on the server from Neon membership rows. Client-supplied roles are never trusted (`src/lib/permissions.ts`).
+
+### Page-level sharing
+
+`computeDocumentAccess()` (`src/lib/documents/access.ts`) is the single source of truth, mirrored in search SQL and Slack unfurling:
+
+- **Levels** — `Full access` (edit + manage sharing), `Can edit`, `Can view`. Workspace owners/admins and the page creator implicitly have full access; members edit; guests view.
+- **Direct shares** — `document_permissions` rows grant page access independent of workspace membership. Inviting an email without an account creates a pending `document_invitations` row (7-day token, accepted at `/invitations/[token]`) that converts to a permission on sign-up.
+- **General access** — per page: *Only people invited* (`visibility = private`; only the creator + direct shares can open it) or *Everyone at {workspace}* (`visibility = workspace`). Personal-notebook pages are always invite-only but can be shared person-by-person.
+- **Publish to web** — tracked by `published_at`/`public_slug` alone and fully independent of in-app access: an invite-only page can still be published read-only at `/p/[slug]`.
 
 ### Search
 
@@ -287,6 +410,13 @@ Long-running processes, sticky sessions, always-on WebSockets, local filesystem 
 2. Rotate/check `BETTER_AUTH_SECRET`.
 3. Confirm email verification links use the same domain.
 4. Clear cookies and retry.
+
+### Emails (invitations, shares, verification) not sending
+
+1. Check `https://your-deployment/api/health` → `env.emailDelivery`. `"console-only"` means `RESEND_API_KEY` and/or `EMAIL_FROM` are **not set** — emails are only logged to the function console, never delivered. Production logs also show a `email.not_configured` warning.
+2. Set `RESEND_API_KEY` and `EMAIL_FROM` in Vercel → Settings → Environment Variables (Production + Preview) and redeploy.
+3. `EMAIL_FROM` must use a domain verified in Resend (e.g. `Docloom <noreply@your-domain.com>`). `onboarding@resend.dev` only delivers to your own Resend account address.
+4. Invitations are never lost on email failure — admins can hit **Resend** in Settings → Members once delivery works.
 
 ### Blob upload failures
 

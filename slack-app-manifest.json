@@ -1,0 +1,52 @@
+{
+  "_readme": "Slack app manifest for Docloom. Replace every YOUR_APP_DOMAIN with your deployed domain (e.g. docloom.vercel.app) or your ngrok domain for local testing, then create the app at https://api.slack.com/apps → Create New App → From a manifest. See README.md → 'Slack integration' for full setup steps.",
+  "display_information": {
+    "name": "Docloom",
+    "description": "Find, preview, and share Docloom documents without leaving Slack.",
+    "background_color": "#0f5c4c"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "docloom",
+      "always_online": true
+    },
+    "slash_commands": [
+      {
+        "command": "/docs",
+        "url": "https://YOUR_APP_DOMAIN/api/slack/commands",
+        "description": "Search Docloom documents",
+        "usage_hint": "[search query]",
+        "should_escape": false
+      }
+    ],
+    "unfurl_domains": ["YOUR_APP_DOMAIN"]
+  },
+  "oauth_config": {
+    "redirect_urls": [
+      "https://YOUR_APP_DOMAIN/api/slack/oauth/callback",
+      "https://YOUR_APP_DOMAIN/api/slack/link/callback"
+    ],
+    "scopes": {
+      "bot": [
+        "links:read",
+        "links:write",
+        "chat:write",
+        "commands",
+        "app_mentions:read"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "request_url": "https://YOUR_APP_DOMAIN/api/slack/events",
+      "bot_events": ["link_shared", "app_mention"]
+    },
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://YOUR_APP_DOMAIN/api/slack/interactive"
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

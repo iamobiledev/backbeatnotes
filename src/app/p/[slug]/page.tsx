@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getPublicDocument } from "@/lib/documents/service";
+import {
+  getPublicDocument,
+  refreshSubpageTitles,
+} from "@/lib/documents/service";
 import { brand } from "@/config/brand";
 import { PublicDocumentView } from "./public-view";
 
@@ -53,7 +56,7 @@ export default async function PublicDocumentPage({
   return (
     <PublicDocumentView
       title={doc.title}
-      contentJson={doc.contentJson}
+      contentJson={await refreshSubpageTitles(doc.contentJson)}
       updatedAt={doc.updatedAt.toISOString()}
       creatorName={doc.creatorName}
     />
