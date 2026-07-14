@@ -16,6 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { blockDomId, isValidBlockId } from "@/lib/documents/blocks";
 
 const lowlight = createLowlight(common);
 
@@ -87,6 +88,7 @@ export const NotionCodeBlock = CodeBlockLowlight.extend({
 
 function CodeBlockView({ node, updateAttributes, editor }: NodeViewProps) {
   const language = (node.attrs.language as string | null) ?? null;
+  const blockId = node.attrs.blockId as unknown;
   const [copied, setCopied] = useState(false);
 
   const copyCode = async () => {
@@ -114,7 +116,12 @@ function CodeBlockView({ node, updateAttributes, editor }: NodeViewProps) {
   };
 
   return (
-    <NodeViewWrapper className="code-block group/code relative my-1">
+    <NodeViewWrapper
+      className="code-block group/code relative my-1"
+      {...(isValidBlockId(blockId)
+        ? { id: blockDomId(blockId), "data-block-id": blockId }
+        : {})}
+    >
       <div
         contentEditable={false}
         className="pointer-events-none absolute inset-x-2 top-1.5 z-[1] flex items-center justify-between opacity-0 transition-opacity duration-150 group-hover/code:opacity-100 group-focus-within/code:opacity-100"

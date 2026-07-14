@@ -444,6 +444,39 @@ body {
   position: relative;
 }
 
+/* Paragraph deep links from Slack: leave room under sticky chrome and briefly
+   call attention to the exact matched block after TipTap mounts. */
+.ProseMirror [data-block-id] {
+  scroll-margin-block: 7rem;
+}
+
+.ProseMirror .is-deep-link-target,
+.ProseMirror [data-block-id]:target {
+  border-radius: 4px;
+  animation: deep-link-highlight 2.6s ease-out;
+}
+
+@keyframes deep-link-highlight {
+  0%,
+  28% {
+    background-color: rgba(35, 131, 226, 0.2);
+    box-shadow: 0 0 0 4px rgba(35, 131, 226, 0.1);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ProseMirror .is-deep-link-target,
+  .ProseMirror [data-block-id]:target {
+    animation-duration: 0.01ms;
+    outline: 2px solid rgba(35, 131, 226, 0.45);
+    outline-offset: 2px;
+  }
+}
+
 /* Subtle hover highlight on the active block (set via JS). */
 .ProseMirror .is-block-hovered {
   border-radius: 4px;

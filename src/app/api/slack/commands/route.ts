@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { after } from "next/server";
 import { verifySlackRequest } from "@/lib/slack/http";
-import { getLinkedUser } from "@/lib/slack/service";
+import {
+  getConnectionsForTeam,
+  getLinkedUser,
+} from "@/lib/slack/service";
 import { buildSearchReply } from "@/lib/slack/assistant";
 import { respondViaResponseUrl } from "@/lib/slack/client";
 import { logger } from "@/lib/logger";
@@ -29,13 +32,20 @@ export async function POST(request: Request) {
 
   after(async () => {
     try {
-      const linked = await getLinkedUser({ slackTeamId: teamId, slackUserId });
+      const [linked, connections] = await Promise.all([
+        getLinkedUser({ slackTeamId: teamId, slackUserId }),
+        getConnectionsForTeam(teamId),
+      ]);
       const reply = await buildSearchReply({
         rawText: text,
         linkedUserId: linked?.userId ?? null,
         slackTeamId: teamId,
+        workspaceIds: connections.map(
+          ({ connection }) => connection.workspaceId,
+        ),
         limit: 5,
         includeShareButtons: true,
+        mode: "keyword",
       });
       await respondViaResponseUrl(responseUrl, {
         response_type: "ephemeral",

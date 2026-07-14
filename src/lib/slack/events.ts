@@ -214,6 +214,9 @@ export async function processAppMention(teamId: string, event: AppMentionEvent) 
       rawText: event.text ?? "",
       linkedUserId: linked?.userId ?? null,
       slackTeamId: teamId,
+      workspaceIds: connections.map(
+        ({ connection }) => connection.workspaceId,
+      ),
       limit: 3,
     });
 

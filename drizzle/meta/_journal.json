@@ -43,6 +43,13 @@
       "when": 1783982839696,
       "tag": "0005_rare_wrecker",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783994977644,
+      "tag": "0006_sudden_turbo",
+      "breakpoints": true
     }
   ]
 }

@@ -9,7 +9,13 @@ import {
   escapeSlackText,
   type SlackBlock,
 } from "./blocks";
-import { extractQueryHeuristic } from "./query";
+import {
+  extractQueryHeuristic,
+  parseAssistantRequestHeuristic,
+} from "./query";
+import { createOpenAIQueryEmbedding } from "@/lib/ai/openai-embeddings";
+import { blockUrlFragment } from "@/lib/documents/blocks";
+import { attachLexicalBlockMatches } from "@/lib/search/document-blocks";
 
 /**
  * The `@docloom` mention assistant: interprets a natural-language request
@@ -112,8 +118,10 @@ export async function buildSearchReply(opts: {
   rawText: string;
   linkedUserId: string | null;
   slackTeamId: string;
+  workspaceIds: string[];
   limit?: number;
   includeShareButtons?: boolean;
+  mode?: "auto" | "keyword";
 }): Promise<AssistantReply> {
   const appUrl = getAppUrl();
 
@@ -127,7 +135,29 @@ export async function buildSearchReply(opts: {
     };
   }
 
-  const query = await extractSearchQuery(opts.rawText);
+  if (opts.workspaceIds.length === 0) {
+    return {
+      text: `${brand.name} is not connected to this Slack workspace.`,
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `${brand.name} is not connected to this Slack workspace. Ask a workspace admin to connect it first.`,
+          },
+        },
+      ],
+    };
+  }
+
+  const parsed =
+    opts.mode === "keyword"
+      ? { intent: "keyword" as const, query: opts.rawText.trim() }
+      : parseAssistantRequestHeuristic(opts.rawText);
+  const query =
+    parsed.intent === "keyword"
+      ? await extractSearchQuery(parsed.query)
+      : parsed.query;
   if (!query) {
     return {
       text: `Tell me what to look for, e.g. "@${brand.name.toLowerCase()} find the onboarding doc".`,
@@ -143,21 +173,53 @@ export async function buildSearchReply(opts: {
     };
   }
 
-  const result = await getSearchService().search({
-    query,
-    userId: opts.linkedUserId,
-    limit: opts.limit ?? 3,
-  });
+  let semantic = false;
+  let result = null;
+  if (parsed.intent === "similar") {
+    const embedding = await createOpenAIQueryEmbedding(query);
+    if (embedding) {
+      result = await getSearchService().semanticSearch({
+        query,
+        embedding,
+        userId: opts.linkedUserId,
+        workspaceIds: opts.workspaceIds,
+        limit: opts.limit ?? 3,
+      });
+      semantic = result.hits.length > 0;
+    }
+  }
+
+  // No OpenAI key, provider failure, or no indexed paragraph: preserve the
+  // existing useful keyword behavior without broadening workspace scope.
+  if (!result || result.hits.length === 0) {
+    const fallbackQuery =
+      parsed.intent === "similar" ? await extractSearchQuery(query) : query;
+    const lexicalResult = await getSearchService().search({
+      query: fallbackQuery,
+      userId: opts.linkedUserId,
+      workspaceIds: opts.workspaceIds,
+      limit: opts.limit ?? 3,
+    });
+    result = {
+      ...lexicalResult,
+      hits: await attachLexicalBlockMatches(
+        lexicalResult.hits,
+        fallbackQuery,
+      ),
+    };
+  }
 
   if (result.hits.length === 0) {
+    const displayQuery =
+      query.length > 120 ? `${query.slice(0, 117).trimEnd()}…` : query;
     return {
-      text: `No documents found for “${query}”.`,
+      text: `No documents found for “${displayQuery}”.`,
       blocks: [
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `I couldn’t find anything for *${escapeSlackText(query)}* — try different keywords, or <${appUrl}/app|browse ${brand.name}>.`,
+            text: `I couldn’t find anything for *${escapeSlackText(displayQuery)}* — try different wording, or <${appUrl}/app|browse ${brand.name}>.`,
           },
         },
       ],
@@ -169,13 +231,19 @@ export async function buildSearchReply(opts: {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `Here’s what I found for *${escapeSlackText(query)}*:`,
+        text: semantic
+          ? `Here are the closest paragraph matches for *${escapeSlackText(
+              query.length > 120 ? `${query.slice(0, 117).trimEnd()}…` : query,
+            )}*:`
+          : `Here’s what I found for *${escapeSlackText(query)}*:`,
       },
     },
   ];
 
   for (const hit of result.hits) {
-    const url = `${appUrl}/app/${hit.workspaceId}/docs/${hit.documentId}`;
+    const url = `${appUrl}/app/${hit.workspaceId}/docs/${hit.documentId}${
+      hit.matchedBlock ? blockUrlFragment(hit.matchedBlock.blockId) : ""
+    }`;
     blocks.push({ type: "divider" });
     blocks.push(
       ...documentCard({
@@ -186,6 +254,7 @@ export async function buildSearchReply(opts: {
         url,
         workspaceName: hit.workspaceName,
         appName: brand.name,
+        matchedParagraph: Boolean(hit.matchedBlock),
       }),
     );
     if (opts.includeShareButtons) {

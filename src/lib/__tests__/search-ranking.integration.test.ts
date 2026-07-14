@@ -34,6 +34,11 @@ runIf("search ranking + permissions (integration)", () => {
     privateDoc: `d-private-${token}`,
     otherWorkspace: `d-other-${token}`,
   };
+  const embedding = (x: number, y: number) => [
+    x,
+    y,
+    ...Array(510).fill(0),
+  ];
 
   beforeAll(async () => {
     process.env.DATABASE_URL = TEST_DATABASE_URL!;
@@ -95,6 +100,39 @@ runIf("search ranking + permissions (integration)", () => {
         plainTextContent: "in another workspace",
         contentJson: {},
         createdById: outsiderId,
+      },
+    ]);
+
+    await db.insert(schema.documentSearchBlocks).values([
+      {
+        id: `b-body-${token}`,
+        documentId: docs.bodyOnly,
+        blockId: `block_body_${token}`,
+        blockType: "paragraph",
+        position: 0,
+        textContent: "Users are unable to receive account recovery email.",
+        inputHash: "body-hash",
+        embedding: embedding(1, 0),
+      },
+      {
+        id: `b-exact-${token}`,
+        documentId: docs.exactTitle,
+        blockId: `block_exact_${token}`,
+        blockType: "paragraph",
+        position: 0,
+        textContent: "A product planning paragraph.",
+        inputHash: "exact-hash",
+        embedding: embedding(0, 1),
+      },
+      {
+        id: `b-other-${token}`,
+        documentId: docs.otherWorkspace,
+        blockId: `block_other_${token}`,
+        blockType: "paragraph",
+        position: 0,
+        textContent: "Account recovery email troubleshooting.",
+        inputHash: "other-hash",
+        embedding: embedding(1, 0),
       },
     ]);
   });
@@ -208,6 +246,47 @@ runIf("search ranking + permissions (integration)", () => {
     expect(hit).toBeDefined();
     expect(hit!.snippet).toContain("⟪");
     expect(hit!.snippet).toContain("⟫");
+  });
+
+  it("finds the closest paragraph semantically and returns its anchor", async () => {
+    const result = await search.semanticSearch({
+      query: "password reset messages do not show up",
+      embedding: embedding(1, 0),
+      userId: memberId,
+      workspaceIds: [workspaceId],
+      limit: 3,
+    });
+    expect(result.hits[0].documentId).toBe(docs.bodyOnly);
+    expect(result.hits[0].matchedBlock).toMatchObject({
+      blockId: `block_body_${token}`,
+      text: "Users are unable to receive account recovery email.",
+    });
+  });
+
+  it("semantic Slack scope excludes otherwise accessible foreign workspaces", async () => {
+    const schema = await import("@/db/schema");
+    await db.insert(schema.documentPermissions).values({
+      id: `p-semantic-${token}`,
+      documentId: docs.otherWorkspace,
+      userId: memberId,
+      level: "view",
+    });
+
+    const result = await search.semanticSearch({
+      query: "account recovery email",
+      embedding: embedding(1, 0),
+      userId: memberId,
+      workspaceIds: [workspaceId],
+      limit: 10,
+    });
+    expect(result.hits.map((hit) => hit.documentId)).not.toContain(
+      docs.otherWorkspace,
+    );
+
+    const { sql } = await import("drizzle-orm");
+    await db.execute(
+      sql`DELETE FROM document_permissions WHERE id = ${`p-semantic-${token}`}`,
+    );
   });
 
   it("owner filter narrows results", async () => {

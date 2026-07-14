@@ -90,7 +90,8 @@ export function SlackSection({
       </h2>
       <p className="mt-1 text-sm text-[var(--muted-foreground)]">
         Preview document links in Slack, search with <code>/docs</code> or by
-        mentioning the bot, and share pages into channels.
+        mentioning the bot, find related paragraphs from a description, and
+        share pages into channels.
       </p>
 
       <div className="mt-3 space-y-3">
@@ -111,7 +112,8 @@ export function SlackSection({
                 </p>
                 <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
                   Document links unfurl in Slack and pages can be shared into
-                  channels.
+                  channels. Bot mentions reply in-thread with matched document
+                  cards.
                 </p>
               </div>
               {isAdmin && (

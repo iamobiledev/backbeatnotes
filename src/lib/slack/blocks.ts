@@ -35,6 +35,8 @@ export type DocumentCardInput = {
   url: string;
   workspaceName?: string;
   appName?: string;
+  /** Render the excerpt as the exact paragraph that drove this result. */
+  matchedParagraph?: boolean;
 };
 
 /**
@@ -62,7 +64,13 @@ export function documentCard(input: DocumentCardInput): SlackBlock[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*<${input.url}|📄 ${title}>*${excerpt ? `\n${excerpt}` : ""}`,
+        text: `*<${input.url}|📄 ${title}>*${
+          excerpt
+            ? input.matchedParagraph
+              ? `\n_Matching paragraph:_\n> ${excerpt}`
+              : `\n${excerpt}`
+            : ""
+        }`,
       },
     },
     {
@@ -75,7 +83,12 @@ export function documentCard(input: DocumentCardInput): SlackBlock[] {
         {
           type: "button",
           style: "primary",
-          text: { type: "plain_text", text: `Open in ${appName}` },
+          text: {
+            type: "plain_text",
+            text: input.matchedParagraph
+              ? "Open matched paragraph"
+              : `Open in ${appName}`,
+          },
           url: input.url,
           action_id: "open_in_app",
         },

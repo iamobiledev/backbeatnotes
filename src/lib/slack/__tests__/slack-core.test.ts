@@ -11,7 +11,11 @@ import {
   minimalCard,
   escapeSlackText,
 } from "../blocks";
-import { extractQueryHeuristic, stripMentions } from "../query";
+import {
+  extractQueryHeuristic,
+  parseAssistantRequestHeuristic,
+  stripMentions,
+} from "../query";
 import { rateLimit, resetRateLimits } from "@/lib/rate-limit";
 
 /* ------------------------------- crypto ---------------------------------- */
@@ -247,6 +251,22 @@ describe("block builders", () => {
     expect(json).toContain("open it in Docloom to view");
     expect(json).not.toContain("Launch");
   });
+
+  it("matched paragraph cards deep-link and label their excerpt", () => {
+    const json = JSON.stringify(
+      documentCard({
+        title: "Password reset runbook",
+        excerptSource: "Check the email provider suppression list.",
+        authorName: "Demo User",
+        updatedAt: new Date("2026-07-01T10:00:00Z"),
+        url: "https://app.example.com/app/w/docs/d#block-abc_123",
+        matchedParagraph: true,
+      }),
+    );
+    expect(json).toContain("#block-abc_123");
+    expect(json).toContain("Matching paragraph");
+    expect(json).toContain("Open matched paragraph");
+  });
 });
 
 /* ----------------------------- query heuristic ---------------------------- */
@@ -269,6 +289,34 @@ describe("extractQueryHeuristic", () => {
 
   it("strips mention tokens", () => {
     expect(stripMentions("<@U42|docloom> hello").trim()).toBe("hello");
+  });
+
+  it("preserves the full reference text for similarity requests", () => {
+    expect(
+      parseAssistantRequestHeuristic(
+        "<@U42> find documents like this: customers can sign in but password reset emails never arrive",
+      ),
+    ).toEqual({
+      intent: "similar",
+      query:
+        "customers can sign in but password reset emails never arrive",
+    });
+    expect(
+      parseAssistantRequestHeuristic(
+        "<@U42> show me pages related to recurring billing failures",
+      ),
+    ).toEqual({
+      intent: "similar",
+      query: "recurring billing failures",
+    });
+  });
+
+  it("keeps ordinary requests in keyword mode", () => {
+    expect(
+      parseAssistantRequestHeuristic(
+        "<@U42> can you find the onboarding checklist doc?",
+      ),
+    ).toEqual({ intent: "keyword", query: "onboarding checklist" });
   });
 });
 

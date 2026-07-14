@@ -14,7 +14,7 @@ Docloom is a Vercel-first collaborative knowledge base built with Next.js (App R
 - **User types** — platform `admin` (creates team workspaces, locks/edits locked wikis) and `developer` (regular user). The first registered user automatically becomes an admin.
 - **Email notifications** — invitation emails, "you've joined a workspace" + "your invite was accepted" emails, and document-activity alerts to a page's creator and previous editors (throttled to one email per person per page per 6 hours, per-user opt-out in Settings → Notifications). Pending invitations show when the email was sent, with one-click resend.
 - **Search** — fast Postgres full-text + trigram search with weighted ranking (exact title → prefix → fuzzy → body → recency), a global **⌘K / Ctrl+K** palette with highlighted snippets and owner/date/scope filters, permission-filtered inside SQL.
-- **Slack integration** — paste a doc link in Slack and get a rich inline preview (permission-aware), search with `/docs` or by mentioning `@docloom` in natural language (optionally LLM-assisted), and share pages into channels from the app's share dialog. See [Slack integration](#slack-integration).
+- **Slack integration** — paste a doc link in Slack and get a rich inline preview (permission-aware), search with `/docs`, or ask `@docloom` for documents like a detailed description. Semantic results quote and deep-link to the matching paragraph in rich threaded cards. See [Slack integration](#slack-integration).
 - **Polish** — keyboard shortcuts (press `?` in the app), loading skeletons, empty states, toasts, responsive layout with a mobile drawer.
 
 ## Stack
@@ -28,7 +28,7 @@ Docloom is a Vercel-first collaborative knowledge base built with Next.js (App R
 | Auth | Better Auth (email/password, verification, resets, sessions) |
 | Email | Resend behind a reusable provider interface |
 | Files | Vercel Blob (+ metadata in Neon) |
-| Search | Neon Postgres FTS + `pg_trgm` (swappable service) |
+| Search | Neon Postgres FTS + `pg_trgm` + optional `pgvector` semantic paragraphs |
 | Tests | Vitest + Playwright |
 | Hosting | Vercel (Functions, Cron, Blob, Analytics, preview deploys) |
 
@@ -48,12 +48,12 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000). Seed credentials default to `demo@docloom.local` / `DocloomDemo123!` (plus `teammate@docloom.local`, a second verified user with no workspace membership — handy for testing permissions).
 
-**No Neon account needed for local dev:** when `DATABASE_URL` points at `localhost` (or `DATABASE_DRIVER=pg` is set), the app automatically uses the `node-postgres` driver instead of the Neon HTTP driver. A plain local PostgreSQL 16 with the `pg_trgm` and `unaccent` extensions works:
+**No Neon account needed for local dev:** when `DATABASE_URL` points at `localhost` (or `DATABASE_DRIVER=pg` is set), the app automatically uses the `node-postgres` driver instead of the Neon HTTP driver. Install pgvector for your PostgreSQL version (for example, `sudo apt install postgresql-16-pgvector` on Ubuntu), then enable the required extensions:
 
 ```bash
 sudo -u postgres psql -c "CREATE ROLE docloom LOGIN PASSWORD 'docloom' SUPERUSER;"
 sudo -u postgres createdb -O docloom docloom
-sudo -u postgres psql -d docloom -c "CREATE EXTENSION pg_trgm; CREATE EXTENSION unaccent;"
+sudo -u postgres psql -d docloom -c "CREATE EXTENSION pg_trgm; CREATE EXTENSION unaccent; CREATE EXTENSION vector;"
 # .env.local → DATABASE_URL=postgresql://docloom:docloom@localhost:5432/docloom
 ```
 
@@ -91,7 +91,8 @@ See [`.env.example`](./.env.example) for the full list. Required for a working d
 | `SLACK_CLIENT_SECRET` | Server | Slack app client secret |
 | `SLACK_SIGNING_SECRET` | Server | Verifies incoming Slack webhooks |
 | `SLACK_TOKEN_ENCRYPTION_KEY` | Server | 32-byte base64 key (`openssl rand -base64 32`) — encrypts Slack bot tokens at rest |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | Server | Optional — lets `@docloom` interpret natural-language requests with an LLM (heuristic fallback without) |
+| `ANTHROPIC_API_KEY` | Server | Optional — improves keyword extraction for conversational Slack requests |
+| `OPENAI_API_KEY` | Server | Optional — enables paragraph-level semantic similarity in Slack with `text-embedding-3-small`; lexical fallback works without it |
 
 Typed validation lives in `src/env/server.ts` (server-only) and `src/env/client.ts` (browser-safe). Missing required vars fail with a clear message. Database credentials are never exposed to the browser.
 
@@ -264,7 +265,8 @@ The goal: find and share docs without leaving Slack, and make any pasted doc lin
 | --- | --- |
 | Inline link previews (unfurls) | Paste any doc link in Slack → rich card with title, ~200-char excerpt, author, last-edited time, and an *Open in Docloom* button. Permission-aware: private/trashed/deleted docs and links shared by unlinked users render a neutral "open in Docloom to view" card — content never leaks. |
 | `/docs <query>` | Ephemeral search results (permission-filtered to *your* linked identity) with *Open* and *Share to channel* buttons. |
-| `@docloom find the onboarding doc` | Mention the bot in natural language — it extracts the query (with Claude/OpenAI if a key is configured, a solid heuristic otherwise) and replies in-thread with document cards. |
+| `@docloom find the onboarding doc` | Mention the bot in natural language — it extracts a keyword query and replies in the originating thread with rich document cards. |
+| `@docloom find docs like this: password reset emails never arrive` | With `OPENAI_API_KEY`, searches by meaning across paragraph embeddings, quotes the closest paragraph, and links directly to it. Without OpenAI it falls back to scoped keyword search. |
 | Share to Slack from the app | In any page's Share dialog: pick a channel, add an optional message, post a rich card. |
 
 ### 1. Create the Slack app
@@ -282,8 +284,10 @@ SLACK_CLIENT_ID=…
 SLACK_CLIENT_SECRET=…
 SLACK_SIGNING_SECRET=…
 SLACK_TOKEN_ENCRYPTION_KEY=$(openssl rand -base64 32)
-# optional, for smarter @docloom mentions:
-ANTHROPIC_API_KEY=…   # or OPENAI_API_KEY=…
+# optional keyword interpretation:
+ANTHROPIC_API_KEY=…
+# optional semantic paragraph search:
+OPENAI_API_KEY=…
 ```
 
 Redeploy (or restart `pnpm dev`). Without these variables every Slack surface shows an honest "not configured" state — nothing breaks.
@@ -295,6 +299,20 @@ Redeploy (or restart `pnpm dev`). Without these variables every Slack surface sh
 3. In Slack, `/invite @docloom` into channels where you want the bot to post shared cards.
 
 Slack will verify the events URL (`/api/slack/events`) when the app is created — the endpoint answers the `url_verification` challenge automatically.
+
+After applying migrations and setting `OPENAI_API_KEY`, index existing pages once:
+
+```bash
+pnpm search:backfill
+```
+
+The command adds stable internal paragraph IDs, synchronizes paragraph rows,
+and embeds missing rows. It is idempotent and does not change visible content
+or document recency. New edits are synchronized automatically.
+
+> **Data processing:** semantic queries and bounded paragraph text are sent to
+> OpenAI’s embeddings API. Keep `OPENAI_API_KEY` server-side and review your
+> organization’s OpenAI data-processing policy before enabling the feature.
 
 ### 4. Local development with ngrok
 
@@ -353,6 +371,7 @@ Workspace IDs, roles, and permissions are resolved on the server from Neon membe
 
 - `pg_trgm` + GIN for fuzzy titles
 - `tsvector` / FTS for body content
+- Optional pgvector HNSW cosine search over stable TipTap paragraphs
 - Weighted ranking (exact title → prefix → fuzzy → terms → body → recency)
 - Permission filtering **inside** SQL via `workspace_members`
 

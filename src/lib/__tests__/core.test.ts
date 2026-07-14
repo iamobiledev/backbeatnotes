@@ -3,6 +3,11 @@ import { extractPlainText } from "@/lib/documents/plain-text";
 import { brand } from "@/config/brand";
 import { slugify, cn, parseEmailList } from "@/lib/utils";
 import { roleAtLeast } from "@/lib/roles";
+import {
+  blockIdFromHash,
+  blockUrlFragment,
+  normalizeDocumentBlocks,
+} from "@/lib/documents/blocks";
 
 describe("brand config", () => {
   it("exposes Docloom naming from a single source", () => {
@@ -47,6 +52,94 @@ describe("extractPlainText", () => {
     };
     expect(extractPlainText(doc)).toContain("Chapter 1");
     expect(extractPlainText(doc)).toContain("Intro");
+  });
+});
+
+describe("document block anchors", () => {
+  it("adds stable IDs and extracts nested paragraphs in document order", () => {
+    let next = 0;
+    const normalized = normalizeDocumentBlocks(
+      {
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            content: [{ type: "text", text: "Overview" }],
+          },
+          {
+            type: "bulletList",
+            content: [
+              {
+                type: "listItem",
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [{ type: "text", text: "Nested item" }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      { idFactory: () => `block_${++next}` },
+    );
+
+    expect(normalized.changed).toBe(true);
+    expect(normalized.blocks).toEqual([
+      {
+        blockId: "block_1",
+        blockType: "heading",
+        position: 0,
+        text: "Overview",
+      },
+      {
+        blockId: "block_2",
+        blockType: "paragraph",
+        position: 1,
+        text: "Nested item",
+      },
+    ]);
+    expect(
+      normalizeDocumentBlocks(normalized.contentJson, {
+        idFactory: () => "unused_1",
+      }),
+    ).toMatchObject({ changed: false, blocks: normalized.blocks });
+  });
+
+  it("repairs duplicate IDs and can regenerate IDs for document copies", () => {
+    const content = {
+      type: "doc",
+      content: [
+        { type: "paragraph", attrs: { blockId: "duplicate" } },
+        { type: "paragraph", attrs: { blockId: "duplicate" } },
+      ],
+    };
+    let next = 0;
+    const repaired = normalizeDocumentBlocks(content, {
+      idFactory: () => `fresh_${++next}`,
+    });
+    const ids = (repaired.contentJson.content as Array<{
+      attrs: { blockId: string };
+    }>).map((node) => node.attrs.blockId);
+    expect(ids).toEqual(["duplicate", "fresh_1"]);
+
+    const regenerated = normalizeDocumentBlocks(repaired.contentJson, {
+      regenerateIds: true,
+      idFactory: () => `copy_${++next}`,
+    });
+    expect(
+      (regenerated.contentJson.content as Array<{
+        attrs: { blockId: string };
+      }>).map((node) => node.attrs.blockId),
+    ).toEqual(["copy_2", "copy_3"]);
+  });
+
+  it("accepts only generated block URL fragments", () => {
+    expect(blockUrlFragment("abc_123")).toBe("#block-abc_123");
+    expect(blockIdFromHash("#block-abc_123")).toBe("abc_123");
+    expect(blockIdFromHash("#other-abc_123")).toBeNull();
+    expect(blockIdFromHash("#block-<script>")).toBeNull();
   });
 });
 

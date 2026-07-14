@@ -58,11 +58,13 @@ import { Subpage } from "./subpage-node";
 import { BlockSelectionHighlight } from "./block-selection";
 import { NotionCodeBlock } from "./code-block";
 import { BlockHandle } from "./block-handle";
+import { BlockIdExtension } from "./block-id-extension";
 import {
   TURN_INTO_OPTIONS,
   getActiveTurnIntoLabel,
 } from "./turn-into";
 import { actionCreateDocument } from "@/app/actions";
+import { blockDomId, blockIdFromHash } from "@/lib/documents/blocks";
 
 export type SaveStatus = "saved" | "saving" | "dirty" | "error";
 
@@ -155,6 +157,7 @@ export function DocumentEditor({
       TaskList,
       TaskItem.configure({ nested: true }),
       Subpage,
+      BlockIdExtension.configure({ assignIds: !readOnly }),
       SlashCommand,
       BlockSelectionHighlight,
     ],
@@ -276,6 +279,63 @@ export function DocumentEditor({
       editor.off("update", handler);
     };
   }, [editor, readOnly, scheduleSave]);
+
+  // Slack search results deep-link to the best matching paragraph. TipTap
+  // mounts asynchronously, so observe its DOM until the target appears.
+  useEffect(() => {
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    const observer = new MutationObserver(() => {
+      if (revealBlock()) observer.disconnect();
+    });
+
+    function revealBlock(): boolean {
+      const blockId = blockIdFromHash(window.location.hash);
+      if (!blockId) return false;
+      const element = document.getElementById(blockDomId(blockId));
+      if (!element) return false;
+
+      const reducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+      element.scrollIntoView({
+        block: "center",
+        behavior: reducedMotion ? "auto" : "smooth",
+      });
+      return true;
+    }
+
+    const arm = () => {
+      observer.disconnect();
+      if (pollTimer) clearInterval(pollTimer);
+      const revealed = revealBlock();
+      if (!revealed) {
+        observer.observe(document.documentElement, {
+          childList: true,
+          subtree: true,
+        });
+        // Next's initial client transition can expose the fragment after the
+        // first effect without firing hashchange, so poll until both the hash
+        // and TipTap block are present.
+        let attempts = 0;
+        pollTimer = setInterval(() => {
+          attempts++;
+          if (revealBlock() || attempts >= 200) {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = null;
+            observer.disconnect();
+          }
+        }, 50);
+      }
+    };
+    const onHashChange = () => arm();
+    arm();
+    window.addEventListener("hashchange", onHashChange);
+    return () => {
+      observer.disconnect();
+      if (pollTimer) clearInterval(pollTimer);
+      window.removeEventListener("hashchange", onHashChange);
+    };
+  }, [documentId]);
 
   // Cmd/Ctrl+S saves immediately.
   useEffect(() => {

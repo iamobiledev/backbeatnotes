@@ -8,6 +8,7 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { Subpage } from "@/components/editor/subpage-node";
 import { NotionCodeBlock } from "@/components/editor/code-block";
+import { BlockIdExtension } from "@/components/editor/block-id-extension";
 
 /** Render TipTap JSON read-only (used for version previews). */
 export function ReadOnlyDoc({
@@ -25,6 +26,7 @@ export function ReadOnlyDoc({
         TaskList,
         TaskItem.configure({ nested: true }),
         Subpage,
+        BlockIdExtension.configure({ assignIds: false }),
       ],
       content: contentJson,
       editable: false,

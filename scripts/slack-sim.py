@@ -155,8 +155,8 @@ posts = [c for c in stub_calls() if c["method"] == "chat.postMessage"]
 ok = len(posts) == 1
 if ok:
     blocks = str(posts[0]["body"])
-    ok = "Welcome" in blocks and posts[0]["body"].get("thread_ts") == "333.444"
-check("@docloom mention → threaded reply with doc card", ok, f"(ack {dur*1000:.0f}ms)")
+    ok = "Welcome" in blocks and "#block-" in blocks and posts[0]["body"].get("thread_ts") == "333.444"
+check("@docloom mention → threaded reply with anchored doc card", ok, f"(ack {dur*1000:.0f}ms)")
 
 # ------------------------------------ 10. app_mention from unlinked user
 reset_stub()
@@ -182,8 +182,8 @@ responses = [c for c in stub_calls() if c["method"] == "response_url_docs"]
 ok = len(responses) == 1
 if ok:
     blocks = str(responses[0]["body"])
-    ok = "Welcome" in blocks and "Share to channel" in blocks and responses[0]["body"].get("response_type") == "ephemeral"
-check("/docs → ephemeral results with share buttons", ok)
+    ok = "Welcome" in blocks and "#block-" in blocks and "Share to channel" in blocks and responses[0]["body"].get("response_type") == "ephemeral"
+check("/docs → anchored ephemeral results with share buttons", ok)
 
 # ---------------------------------------- 12. /docs from unlinked user
 reset_stub()

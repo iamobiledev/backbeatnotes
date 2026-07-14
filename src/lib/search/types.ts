@@ -18,12 +18,21 @@ export type SearchHit = {
   workspaceName?: string;
   creatorName?: string;
   creatorId?: string;
+  /** Best matching paragraph for Slack semantic/deep-link results. */
+  matchedBlock?: {
+    blockId: string;
+    blockType: string;
+    text: string;
+    similarity?: number;
+  };
 };
 
 export type SearchQuery = {
   query: string;
   userId: string;
   workspaceId?: string;
+  /** Restrict results to this exact set (used for Slack-team scoping). */
+  workspaceIds?: string[];
   /** Only documents created by this user. */
   ownerId?: string;
   /** Only documents inside this page's subtree (folder filter). */
@@ -32,6 +41,14 @@ export type SearchQuery = {
   updatedAfter?: Date;
   limit?: number;
   offset?: number;
+};
+
+export type SemanticSearchQuery = {
+  query: string;
+  embedding: number[];
+  userId: string;
+  workspaceIds: string[];
+  limit?: number;
 };
 
 export type SearchResult = {
@@ -46,4 +63,5 @@ export const HIGHLIGHT_END = "⟫";
 
 export interface SearchService {
   search(input: SearchQuery): Promise<SearchResult>;
+  semanticSearch(input: SemanticSearchQuery): Promise<SearchResult>;
 }

@@ -9,6 +9,7 @@ import {
   timestamp,
   uniqueIndex,
   customType,
+  vector,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
@@ -312,6 +313,46 @@ export const documents = pgTable(
       sql`${t.title} gin_trgm_ops`,
     ),
     index("documents_search_vector_idx").using("gin", t.searchVector),
+  ],
+);
+
+/**
+ * Searchable TipTap text blocks. Text/ordering is synchronized on document
+ * writes; embeddings are filled asynchronously when OpenAI is configured.
+ */
+export const documentSearchBlocks = pgTable(
+  "document_search_blocks",
+  {
+    id: text("id").primaryKey(),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    blockId: text("block_id").notNull(),
+    blockType: text("block_type").notNull(),
+    position: integer("position").notNull(),
+    textContent: text("text_content").notNull(),
+    inputHash: text("input_hash").notNull(),
+    embedding: vector("embedding", { dimensions: 512 }),
+    embeddedAt: timestamp("embedded_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("document_search_blocks_doc_block_uidx").on(
+      t.documentId,
+      t.blockId,
+    ),
+    index("document_search_blocks_doc_position_idx").on(
+      t.documentId,
+      t.position,
+    ),
+    index("document_search_blocks_embedding_hnsw_idx")
+      .using("hnsw", t.embedding.op("vector_cosine_ops"))
+      .where(sql`${t.embedding} IS NOT NULL`),
   ],
 );
 
@@ -650,12 +691,24 @@ export const documentRelations = relations(documents, ({ one, many }) => ({
   }),
   versions: many(documentVersions),
   files: many(files),
+  searchBlocks: many(documentSearchBlocks),
 }));
+
+export const documentSearchBlockRelations = relations(
+  documentSearchBlocks,
+  ({ one }) => ({
+    document: one(documents, {
+      fields: [documentSearchBlocks.documentId],
+      references: [documents.id],
+    }),
+  }),
+);
 
 export type User = typeof user.$inferSelect;
 export type Workspace = typeof workspaces.$inferSelect;
 export type WorkspaceMember = typeof workspaceMembers.$inferSelect;
 export type Document = typeof documents.$inferSelect;
+export type DocumentSearchBlock = typeof documentSearchBlocks.$inferSelect;
 export type FileRecord = typeof files.$inferSelect;
 export type WorkspaceInvitation = typeof workspaceInvitations.$inferSelect;
 export type DocumentPermission = typeof documentPermissions.$inferSelect;

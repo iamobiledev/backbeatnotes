@@ -123,6 +123,43 @@ test.describe.serial("core flows", () => {
     await expect(editor.getByText("Milestones")).toBeVisible();
   });
 
+  test("paragraph deep links scroll to and highlight the saved block", async ({
+    page,
+  }) => {
+    await signIn(page, DEMO_EMAIL);
+    await page.goto(docUrl);
+    const paragraph = page
+      .locator(".ProseMirror p")
+      .filter({ hasText: `Our launch checklist ${runId}` })
+      .first();
+    const blockId = await paragraph.getAttribute("data-block-id");
+    expect(blockId).toBeTruthy();
+
+    await page.goto(`${docUrl}#block-${blockId}`);
+    const target = page.locator(`#block-${blockId}`);
+    await expect(target).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => window.location.hash))
+      .toBe(`#block-${blockId}`);
+    await expect(target).toHaveJSProperty("id", `block-${blockId}`);
+    await expect
+      .poll(() =>
+        target.evaluate((element) => ({
+          highlighted: element.classList.contains("is-deep-link-target"),
+          animation: getComputedStyle(element).animationName,
+        })),
+      )
+      .toEqual({
+        highlighted: true,
+        animation: "deep-link-highlight",
+      });
+
+    // Stale links still open the document normally.
+    await page.goto(`${docUrl}#block-does_not_exist`);
+    await expect(page.getByLabel("Document title")).toHaveValue(docTitle);
+    await expect(page.locator(".ProseMirror")).toBeVisible();
+  });
+
   test("'/subpage' creates a nested page linked from the parent", async ({
     page,
   }) => {

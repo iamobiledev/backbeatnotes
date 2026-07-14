@@ -5,6 +5,7 @@ import { nanoid } from "nanoid";
 import * as schema from "../src/db/schema";
 import { createDatabase } from "../src/db/create-db";
 import { brand } from "../src/config/brand";
+import { normalizeDocumentBlocks } from "../src/lib/documents/blocks";
 
 /**
  * Local development seed.
@@ -99,21 +100,22 @@ async function main() {
     const plain =
       `${brand.name} helps your team capture and find knowledge. ` +
       `Try search, publish a public page, and invite a teammate.`;
+    const contentJson = normalizeDocumentBlocks({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: plain }],
+        },
+      ],
+    }).contentJson;
     await db.insert(schema.documents).values({
       id: welcomeId,
       workspaceId: workspaceId!,
       title,
       breadcrumbPath: title,
       plainTextContent: plain,
-      contentJson: {
-        type: "doc",
-        content: [
-          {
-            type: "paragraph",
-            content: [{ type: "text", text: plain }],
-          },
-        ],
-      },
+      contentJson,
       createdById: userId!,
       updatedById: userId!,
     });

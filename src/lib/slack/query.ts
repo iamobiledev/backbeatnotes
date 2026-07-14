@@ -40,3 +40,38 @@ export function extractQueryHeuristic(text: string): string {
   // Keep queries bounded.
   return query.split(" ").slice(0, 8).join(" ").slice(0, 100).trim();
 }
+
+export type AssistantSearchRequest = {
+  intent: "keyword" | "similar";
+  query: string;
+};
+
+/**
+ * Preserve the complete reference description for "find docs like this"
+ * requests. Ordinary find requests keep using the compact keyword heuristic.
+ */
+export function parseAssistantRequestHeuristic(
+  text: string,
+): AssistantSearchRequest {
+  const withoutMention = stripMentions(text).replace(/\s+/g, " ").trim();
+  const similarityPatterns = [
+    /\b(?:documents?|docs?|pages?)?\s*(?:like|similar to|related to)\s*(?:the following|this)?\s*[:—-]?\s*(.+)$/i,
+    /\b(?:matching|match)\s+(?:this|the following)\s+(?:description|problem|text)?\s*[:—-]?\s*(.+)$/i,
+  ];
+
+  for (const pattern of similarityPatterns) {
+    const match = withoutMention.match(pattern);
+    const query = match?.[1]
+      ?.replace(/^["'`\s]+|["'`\s]+$/g, "")
+      .trim()
+      .slice(0, 12_000);
+    if (query && query.length >= 2) {
+      return { intent: "similar", query };
+    }
+  }
+
+  return {
+    intent: "keyword",
+    query: extractQueryHeuristic(text),
+  };
+}
