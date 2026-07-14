@@ -120,6 +120,75 @@ async function main() {
     console.log("Created welcome document");
   }
 
+  // Optional deterministic scale fixture for performance tests. Normal local
+  // seeds stay small; opt in with SEED_PERF_DOCUMENTS (for example, 500).
+  const perfDocumentCount = Math.max(
+    0,
+    Math.min(Number(process.env.SEED_PERF_DOCUMENTS ?? 0) || 0, 5_000),
+  );
+  if (perfDocumentCount > 0) {
+    const existingPerfDoc = await db.query.documents.findFirst({
+      where: (d, { and, eq, like }) =>
+        and(
+          eq(d.workspaceId, workspaceId!),
+          like(d.title, "[perf] document %"),
+        ),
+    });
+
+    if (!existingPerfDoc) {
+      const ids = Array.from({ length: perfDocumentCount }, () => nanoid());
+      const values = ids.map((id, index) => {
+        const number = String(index + 1).padStart(5, "0");
+        const title = `[perf] document ${number}`;
+        // The first 25 records form a deep chain; the remainder are roots.
+        const parentId = index > 0 && index < 25 ? ids[index - 1] : null;
+        const paragraph =
+          `Performance fixture ${number}. Searchable workspace content for ` +
+          "navigation, sidebar, recent-document, and full-text benchmarks.";
+        const repeated =
+          index === perfDocumentCount - 1
+            ? Array.from({ length: 200 }, (_, paragraphIndex) => ({
+                type: "paragraph",
+                content: [
+                  {
+                    type: "text",
+                    text: `${paragraph} Large paragraph ${paragraphIndex + 1}.`,
+                  },
+                ],
+              }))
+            : [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: paragraph }],
+                },
+              ];
+
+        return {
+          id,
+          workspaceId: workspaceId!,
+          parentId,
+          title,
+          breadcrumbPath: title,
+          plainTextContent: repeated
+            .map((node) => node.content[0].text)
+            .join("\n"),
+          contentJson: { type: "doc", content: repeated },
+          createdById: userId!,
+          updatedById: userId!,
+        };
+      });
+
+      for (let offset = 0; offset < values.length; offset += 100) {
+        await db
+          .insert(schema.documents)
+          .values(values.slice(offset, offset + 100));
+      }
+      console.log(`Created ${perfDocumentCount} performance fixture documents`);
+    } else {
+      console.log("Performance fixture already exists");
+    }
+  }
+
   // A second verified user with no membership in the demo workspace —
   // useful for testing permissions locally (request access, private docs).
   const outsiderEmail =

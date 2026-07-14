@@ -67,6 +67,8 @@ sudo -u postgres psql -d docloom -c "CREATE EXTENSION pg_trgm; CREATE EXTENSION 
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm test` | Vitest unit tests |
 | `pnpm test:e2e` | Playwright smoke tests |
+| `pnpm test:perf` | Playwright performance contracts (fixture URLs optional) |
+| `pnpm perf:audit` | Route TTFB and compressed asset transfer audit |
 | `pnpm check` | lint + typecheck + unit tests |
 | `pnpm db:generate` | Generate Drizzle migrations from schema |
 | `pnpm db:migrate` | **Intentional** migration runner (not on every deploy) |
@@ -238,6 +240,30 @@ PLAYWRIGHT_BASE_URL=https://your-preview.vercel.app pnpm test:e2e
 # Slack integration simulation (see “Slack integration → Testing without Slack”)
 python3 scripts/slack-sim.py
 ```
+
+### Performance checks
+
+Run the route and asset audit against a local production server or deployment:
+
+```bash
+pnpm perf:audit -- --base http://localhost:3000 --routes /,/sign-in
+pnpm perf:audit -- --base https://preview.example.com \
+  --routes /,/sign-in,/p/example --out perf-results.json
+```
+
+Optional `--max-ttfb` and `--max-assets` flags turn measurements into failing
+budgets. For deterministic scale testing, seed a large workspace explicitly:
+
+```bash
+SEED_PERF_DOCUMENTS=500 pnpm db:seed
+```
+
+Set `E2E_PERF_WORKSPACE_URL`, `E2E_PERF_DOCUMENT_URL`, and
+`E2E_PUBLIC_DOCUMENT_URL` to exercise the database-backed performance
+contracts. Vercel Analytics and Speed Insights collect real-user route and
+Core Web Vitals data in deployed environments. Server operations slower than
+250 ms emit a structured `performance.slow_operation` warning; override that
+threshold with `SLOW_OPERATION_MS`.
 
 ### Rolling back a deployment
 
