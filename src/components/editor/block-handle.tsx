@@ -283,7 +283,9 @@ export function BlockHandle({ editor }: BlockHandleProps) {
           to: pos + node.nodeSize - 1,
         });
       } else {
-        editor.commands.setNodeSelection(pos);
+        // Focus first: the selected-node ring is only painted while the
+        // editor is focused (clicking the grip moved focus outside it).
+        editor.chain().focus().setNodeSelection(pos).run();
       }
     },
     [editor],

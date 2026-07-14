@@ -79,7 +79,7 @@ function SubpageView({ node }: NodeViewProps) {
           className="group flex w-full items-center gap-1.5 rounded-md px-1 py-1 no-underline transition-colors hover:bg-[var(--sidebar-hover)]"
         >
           <FileText className="h-4.5 w-4.5 shrink-0 text-[var(--muted-foreground)]" />
-          <span className="truncate font-medium underline decoration-[rgba(55,53,47,0.4)] underline-offset-[3px] group-hover:decoration-[var(--foreground)]">
+          <span className="truncate font-medium underline decoration-[var(--underline-soft)] underline-offset-[3px] group-hover:decoration-[var(--foreground)]">
             {title}
           </span>
         </Link>

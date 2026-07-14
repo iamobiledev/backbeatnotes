@@ -125,7 +125,7 @@ function CodeBlockView({ node, updateAttributes, editor }: NodeViewProps) {
               <button
                 type="button"
                 aria-label="Code language"
-                className="pointer-events-auto flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[rgba(55,53,47,0.08)] focus-visible:outline-none"
+                className="pointer-events-auto flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--hover-strong)] focus-visible:outline-none"
               >
                 {languageLabel(language)}
                 <ChevronDown className="h-3 w-3" />
@@ -161,7 +161,7 @@ function CodeBlockView({ node, updateAttributes, editor }: NodeViewProps) {
           type="button"
           aria-label="Copy code"
           onClick={() => void copyCode()}
-          className="pointer-events-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[rgba(55,53,47,0.08)] focus-visible:outline-none"
+          className="pointer-events-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--hover-strong)] focus-visible:outline-none"
         >
           {copied ? (
             <>

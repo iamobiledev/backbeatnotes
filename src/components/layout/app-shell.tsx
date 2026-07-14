@@ -7,15 +7,19 @@ import { toast } from "sonner";
 import {
   BookLock,
   BookOpen,
+  Check,
   ChevronRight,
   ChevronsUpDown,
   Home,
   Menu,
+  Monitor,
+  Moon,
   Plus,
   Search,
   Settings,
   SquarePen,
   Star,
+  Sun,
   Trash2,
   LogOut,
   Keyboard,
@@ -39,6 +43,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { signOut } from "@/lib/auth-client";
+import { useTheme, type ThemePreference } from "@/components/theme/theme";
 import { actionCreateDocument } from "@/app/actions";
 import type { DocumentTreeNode, WorkspaceSummary } from "@/lib/documents/types";
 import { DocumentTree } from "./document-tree";
@@ -418,6 +423,8 @@ export function AppShell({
                     </kbd>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  <AppearancePicker />
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onSelect={async () => {
                       await signOut();
@@ -440,6 +447,46 @@ export function AppShell({
       <CommandPalette workspaceId={workspace.id} />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </TooltipProvider>
+  );
+}
+
+const APPEARANCE_OPTIONS: Array<{
+  value: ThemePreference;
+  label: string;
+  icon: React.ReactNode;
+}> = [
+  { value: "light", label: "Light", icon: <Sun className="h-4 w-4" /> },
+  { value: "dark", label: "Dark", icon: <Moon className="h-4 w-4" /> },
+  {
+    value: "system",
+    label: "Sync with system",
+    icon: <Monitor className="h-4 w-4" />,
+  },
+];
+
+/** Light / Dark / System selector shown in the account (profile) menu. */
+function AppearancePicker() {
+  const { theme, setTheme } = useTheme();
+  return (
+    <>
+      <DropdownMenuLabel>Appearance</DropdownMenuLabel>
+      {APPEARANCE_OPTIONS.map((option) => (
+        <DropdownMenuItem
+          key={option.value}
+          onSelect={(event) => {
+            // Keep the menu open so the change is visible immediately.
+            event.preventDefault();
+            setTheme(option.value);
+          }}
+        >
+          {option.icon}
+          {option.label}
+          {theme === option.value && (
+            <Check className="ml-auto h-3.5 w-3.5 text-[var(--primary)]" />
+          )}
+        </DropdownMenuItem>
+      ))}
+    </>
   );
 }
 
@@ -539,7 +586,7 @@ function TeamspaceItem({
               {workspace.name[0]?.toUpperCase() ?? "T"}
             </span>
           </span>
-          <span className="absolute inset-0.5 flex items-center justify-center rounded text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[rgba(55,53,47,0.12)] group-hover/ts:opacity-100">
+          <span className="absolute inset-0.5 flex items-center justify-center rounded text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[var(--hover-strong)] group-hover/ts:opacity-100">
             <ChevronRight
               className={`h-3.5 w-3.5 transition-transform ${
                 expanded ? "rotate-90" : ""
@@ -565,7 +612,7 @@ function TeamspaceItem({
               setExpanded(true);
               onCreatePage();
             }}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[rgba(55,53,47,0.12)] focus-visible:opacity-100 focus-visible:outline-none group-hover/ts:opacity-100"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[var(--hover-strong)] focus-visible:opacity-100 focus-visible:outline-none group-hover/ts:opacity-100"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>

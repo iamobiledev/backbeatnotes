@@ -26,8 +26,45 @@
   --hero-wash: #e7f3f8;
   --inline-code: #eb5757;
   --inline-code-bg: rgba(135, 131, 120, 0.15);
+  --hover-strong: rgba(55, 53, 47, 0.12);
+  --placeholder: rgba(55, 53, 47, 0.35);
+  --placeholder-faint: rgba(55, 53, 47, 0.2);
+  --underline-soft: rgba(55, 53, 47, 0.4);
+  --code-bg: #f7f6f3;
+  --selection: rgba(35, 131, 226, 0.28);
   /* Headings share the body family (Notion-style single sans). */
   --font-display: var(--font-body);
+  color-scheme: light;
+}
+
+/* Notion-style dark palette; toggled via the `dark` class on <html>. */
+.dark {
+  --background: #191919;
+  --foreground: rgba(255, 255, 255, 0.81);
+  --card: #252525;
+  --muted: #2f2f2f;
+  --muted-foreground: rgba(255, 255, 255, 0.45);
+  --border: rgba(255, 255, 255, 0.13);
+  --primary: #2383e2;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(255, 255, 255, 0.81);
+  --secondary-foreground: #191919;
+  --destructive: #eb5757;
+  --ring: #2383e2;
+  --sidebar: #202020;
+  --sidebar-hover: rgba(255, 255, 255, 0.055);
+  --sidebar-active: rgba(255, 255, 255, 0.1);
+  --hero-glow: rgba(35, 131, 226, 0.18);
+  --hero-wash: rgba(35, 131, 226, 0.12);
+  --inline-code: #ff6b6b;
+  --inline-code-bg: rgba(135, 131, 120, 0.22);
+  --hover-strong: rgba(255, 255, 255, 0.14);
+  --placeholder: rgba(255, 255, 255, 0.35);
+  --placeholder-faint: rgba(255, 255, 255, 0.22);
+  --underline-soft: rgba(255, 255, 255, 0.4);
+  --code-bg: #202020;
+  --selection: rgba(35, 131, 226, 0.4);
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -62,7 +99,7 @@ body {
 }
 
 ::selection {
-  background: rgba(35, 131, 226, 0.28);
+  background: var(--selection);
 }
 
 .prose h1,
@@ -115,7 +152,7 @@ body {
 /* Placeholder hint on the caret's empty block (Notion-style). */
 .ProseMirror p.is-editor-empty:first-child::before,
 .ProseMirror .is-empty::before {
-  color: rgba(55, 53, 47, 0.35);
+  color: var(--placeholder);
   content: attr(data-placeholder);
   float: left;
   height: 0;
@@ -126,7 +163,7 @@ body {
 .prose a {
   color: inherit;
   text-decoration: underline;
-  text-decoration-color: rgba(55, 53, 47, 0.4);
+  text-decoration-color: var(--underline-soft);
   text-underline-offset: 3px;
   transition: text-decoration-color 120ms ease-in;
 }
@@ -136,7 +173,7 @@ body {
 }
 
 .prose pre {
-  background: #f7f6f3;
+  background: var(--code-bg);
   color: var(--foreground);
   border-radius: 6px;
   /* Extra headroom for the hover-reveal language picker / copy button. */
@@ -213,6 +250,60 @@ body {
   font-weight: 600;
 }
 
+/* Dark-mode syntax palette (One Dark-ish, on Notion's dark code canvas). */
+.dark .prose pre .hljs-comment,
+.dark .prose pre .hljs-quote {
+  color: #7f848e;
+}
+
+.dark .prose pre .hljs-keyword,
+.dark .prose pre .hljs-selector-tag,
+.dark .prose pre .hljs-literal,
+.dark .prose pre .hljs-doctag,
+.dark .prose pre .hljs-meta {
+  color: #61afef;
+}
+
+.dark .prose pre .hljs-string,
+.dark .prose pre .hljs-char,
+.dark .prose pre .hljs-addition,
+.dark .prose pre .hljs-selector-attr,
+.dark .prose pre .hljs-selector-pseudo {
+  color: #98c379;
+}
+
+.dark .prose pre .hljs-number,
+.dark .prose pre .hljs-symbol,
+.dark .prose pre .hljs-bullet,
+.dark .prose pre .hljs-deletion,
+.dark .prose pre .hljs-tag,
+.dark .prose pre .hljs-name,
+.dark .prose pre .hljs-selector-id,
+.dark .prose pre .hljs-selector-class {
+  color: #d19a66;
+}
+
+.dark .prose pre .hljs-title,
+.dark .prose pre .hljs-title.function_,
+.dark .prose pre .hljs-title.class_,
+.dark .prose pre .hljs-section {
+  color: #e06c75;
+}
+
+.dark .prose pre .hljs-attr,
+.dark .prose pre .hljs-attribute,
+.dark .prose pre .hljs-variable,
+.dark .prose pre .hljs-template-variable,
+.dark .prose pre .hljs-regexp,
+.dark .prose pre .hljs-link {
+  color: #e5c07b;
+}
+
+.dark .prose pre .hljs-built_in,
+.dark .prose pre .hljs-type {
+  color: #56b6c2;
+}
+
 .prose code {
   background: var(--inline-code-bg);
   color: var(--inline-code);
@@ -249,7 +340,7 @@ body {
 
 .prose hr {
   border: none;
-  border-top: 1px solid rgba(55, 53, 47, 0.16);
+  border-top: 1px solid var(--border);
   margin: 1em 0;
 }
 
@@ -297,14 +388,20 @@ body {
   text-decoration: none;
 }
 
-/* Selected node outline (e.g. images) — not during block-handle drags. */
-.ProseMirror-selectednode {
+/*
+ * Selected node outline (e.g. images, sub-page links) — only while the
+ * editor is focused: ProseMirror's initial selection can land on a leading
+ * atom block, which must not paint a ring before the user interacts.
+ * Not shown during block-handle drags.
+ */
+.ProseMirror.ProseMirror-focused .ProseMirror-selectednode {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
-.ProseMirror.is-dragging-block .ProseMirror-selectednode {
+.ProseMirror.is-dragging-block .ProseMirror-selectednode,
+.ProseMirror.ProseMirror-focused.is-dragging-block .ProseMirror-selectednode {
   outline: none;
 }
 
@@ -349,6 +446,10 @@ body {
 .ProseMirror .is-block-hovered {
   border-radius: 4px;
   background-color: rgba(55, 53, 47, 0.04);
+}
+
+.dark .ProseMirror .is-block-hovered {
+  background-color: rgba(255, 255, 255, 0.055);
 }
 
 /* Selection highlight while dragging a block range. */
