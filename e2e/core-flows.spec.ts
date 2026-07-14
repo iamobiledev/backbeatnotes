@@ -138,7 +138,21 @@ test.describe.serial("core flows", () => {
     await page.goto(`${docUrl}#block-${blockId}`);
     const target = page.locator(`#block-${blockId}`);
     await expect(target).toBeVisible();
-    await expect(target).toHaveClass(/is-deep-link-target/);
+    await expect
+      .poll(() => page.evaluate(() => window.location.hash))
+      .toBe(`#block-${blockId}`);
+    await expect(target).toHaveJSProperty("id", `block-${blockId}`);
+    await expect
+      .poll(() =>
+        target.evaluate((element) => ({
+          highlighted: element.classList.contains("is-deep-link-target"),
+          animation: getComputedStyle(element).animationName,
+        })),
+      )
+      .toEqual({
+        highlighted: true,
+        animation: "deep-link-highlight",
+      });
 
     // Stale links still open the document normally.
     await page.goto(`${docUrl}#block-does_not_exist`);

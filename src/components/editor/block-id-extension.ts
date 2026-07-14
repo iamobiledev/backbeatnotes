@@ -1,9 +1,12 @@
 import { Extension } from "@tiptap/react";
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { nanoid } from "nanoid";
 import {
   BLOCK_ID_ATTRIBUTE,
   blockDomId,
+  blockIdFromHash,
   isSearchableBlockType,
   isValidBlockId,
 } from "@/lib/documents/blocks";
@@ -13,6 +16,56 @@ type BlockIdOptions = {
 };
 
 const pluginKey = new PluginKey("docloomBlockIds");
+const deepLinkPluginKey = new PluginKey<DecorationSet>(
+  "docloomDeepLinkTarget",
+);
+
+function deepLinkDecorations(doc: ProseMirrorNode): DecorationSet {
+  if (typeof window === "undefined") return DecorationSet.empty;
+  const targetId = blockIdFromHash(window.location.hash);
+  if (!targetId) return DecorationSet.empty;
+
+  const decorations: Decoration[] = [];
+  doc.descendants((node, position) => {
+    if (node.attrs[BLOCK_ID_ATTRIBUTE] !== targetId) return;
+    decorations.push(
+      Decoration.node(position, position + node.nodeSize, {
+        class: "is-deep-link-target",
+      }),
+    );
+    return false;
+  });
+  return DecorationSet.create(doc, decorations);
+}
+
+function deepLinkPlugin() {
+  return new Plugin<DecorationSet>({
+    key: deepLinkPluginKey,
+    state: {
+      init: (_config, state) => deepLinkDecorations(state.doc),
+      apply: (transaction, current, _oldState, newState) =>
+        transaction.docChanged || transaction.getMeta(deepLinkPluginKey)
+          ? deepLinkDecorations(newState.doc)
+          : current,
+    },
+    props: {
+      decorations: (state) => deepLinkPluginKey.getState(state) ?? null,
+    },
+    view: (view) => {
+      const update = () => {
+        view.dispatch(view.state.tr.setMeta(deepLinkPluginKey, true));
+      };
+      const timer = setTimeout(update, 0);
+      window.addEventListener("hashchange", update);
+      return {
+        destroy: () => {
+          clearTimeout(timer);
+          window.removeEventListener("hashchange", update);
+        },
+      };
+    },
+  });
+}
 
 function transactionWithMissingBlockIds(state: EditorState) {
   const seen = new Set<string>();
@@ -85,9 +138,10 @@ export const BlockIdExtension = Extension.create<BlockIdOptions>({
   },
 
   addProseMirrorPlugins() {
-    if (!this.options.assignIds) return [];
-    return [
-      new Plugin({
+    const plugins = [deepLinkPlugin()];
+    if (this.options.assignIds) {
+      plugins.push(
+        new Plugin({
         key: pluginKey,
         appendTransaction: (transactions, _oldState, newState) => {
           if (
@@ -98,7 +152,9 @@ export const BlockIdExtension = Extension.create<BlockIdOptions>({
           }
           return transactionWithMissingBlockIds(newState);
         },
-      }),
-    ];
+        }),
+      );
+    }
+    return plugins;
   },
 });

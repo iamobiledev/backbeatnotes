@@ -279,23 +279,18 @@ export function DocumentEditor({
   }, [editor, readOnly, scheduleSave]);
 
   // Slack search results deep-link to the best matching paragraph. TipTap
-  // mounts asynchronously, so retry briefly before giving up on a stale or
-  // deleted block anchor.
+  // mounts asynchronously, so observe its DOM until the target appears.
   useEffect(() => {
-    if (!editor) return;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let highlightTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    const observer = new MutationObserver(() => {
+      if (revealBlock()) observer.disconnect();
+    });
 
-    const revealBlock = (attempt = 0) => {
+    function revealBlock(): boolean {
       const blockId = blockIdFromHash(window.location.hash);
-      if (!blockId) return;
+      if (!blockId) return false;
       const element = document.getElementById(blockDomId(blockId));
-      if (!element) {
-        if (attempt < 10) {
-          timer = setTimeout(() => revealBlock(attempt + 1), 50);
-        }
-        return;
-      }
+      if (!element) return false;
 
       const reducedMotion = window.matchMedia(
         "(prefers-reduced-motion: reduce)",
@@ -304,24 +299,41 @@ export function DocumentEditor({
         block: "center",
         behavior: reducedMotion ? "auto" : "smooth",
       });
-      element.classList.remove("is-deep-link-target");
-      // Restart the animation when navigating between anchors on one page.
-      void element.offsetWidth;
-      element.classList.add("is-deep-link-target");
-      highlightTimer = setTimeout(() => {
-        element.classList.remove("is-deep-link-target");
-      }, 2600);
-    };
+      return true;
+    }
 
-    const onHashChange = () => revealBlock();
-    timer = setTimeout(() => revealBlock(), 0);
+    const arm = () => {
+      observer.disconnect();
+      if (pollTimer) clearInterval(pollTimer);
+      const revealed = revealBlock();
+      if (!revealed) {
+        observer.observe(document.documentElement, {
+          childList: true,
+          subtree: true,
+        });
+        // Next's initial client transition can expose the fragment after the
+        // first effect without firing hashchange, so poll until both the hash
+        // and TipTap block are present.
+        let attempts = 0;
+        pollTimer = setInterval(() => {
+          attempts++;
+          if (revealBlock() || attempts >= 200) {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = null;
+            observer.disconnect();
+          }
+        }, 50);
+      }
+    };
+    const onHashChange = () => arm();
+    arm();
     window.addEventListener("hashchange", onHashChange);
     return () => {
-      if (timer) clearTimeout(timer);
-      if (highlightTimer) clearTimeout(highlightTimer);
+      observer.disconnect();
+      if (pollTimer) clearInterval(pollTimer);
       window.removeEventListener("hashchange", onHashChange);
     };
-  }, [editor]);
+  }, [documentId]);
 
   // Cmd/Ctrl+S saves immediately.
   useEffect(() => {

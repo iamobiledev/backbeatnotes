@@ -351,7 +351,8 @@ body {
   scroll-margin-block: 7rem;
 }
 
-.ProseMirror .is-deep-link-target {
+.ProseMirror .is-deep-link-target,
+.ProseMirror [data-block-id]:target {
   border-radius: 4px;
   animation: deep-link-highlight 2.6s ease-out;
 }
@@ -369,7 +370,8 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ProseMirror .is-deep-link-target {
+  .ProseMirror .is-deep-link-target,
+  .ProseMirror [data-block-id]:target {
     animation-duration: 0.01ms;
     outline: 2px solid rgba(35, 131, 226, 0.45);
     outline-offset: 2px;
