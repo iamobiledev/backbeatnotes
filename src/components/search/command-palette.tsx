@@ -60,12 +60,15 @@ export function CommandPalette({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const requestSeq = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
       setInternalOpen(next);
       onOpenChange?.(next);
       if (!next) {
+        abortRef.current?.abort();
+        abortRef.current = null;
         setQuery("");
         setHits([]);
         setSearched(false);
@@ -90,13 +93,19 @@ export function CommandPalette({
 
   const runSearch = useCallback(async () => {
     const q = query.trim();
-    if (!q) {
+    if (q.length < 2) {
+      abortRef.current?.abort();
+      abortRef.current = null;
       setHits([]);
       setSearched(false);
       setError(null);
+      setLoading(false);
       return;
     }
     const seq = ++requestSeq.current;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
     setError(null);
     try {
@@ -109,7 +118,9 @@ export function CommandPalette({
         const after = new Date(Date.now() - Number(days) * 86_400_000);
         params.set("updatedAfter", after.toISOString());
       }
-      const res = await fetch(`/api/search?${params.toString()}`);
+      const res = await fetch(`/api/search?${params.toString()}`, {
+        signal: controller.signal,
+      });
       if (seq !== requestSeq.current) return;
       if (!res.ok) {
         setError(
@@ -125,12 +136,21 @@ export function CommandPalette({
       setHits(data.hits);
       setSearched(true);
       setSelectedIndex(0);
-    } catch {
+    } catch (searchError) {
+      if (
+        searchError instanceof DOMException &&
+        searchError.name === "AbortError"
+      ) {
+        return;
+      }
       if (seq === requestSeq.current) {
         setError("Search is unavailable right now.");
       }
     } finally {
-      if (seq === requestSeq.current) setLoading(false);
+      if (seq === requestSeq.current) {
+        setLoading(false);
+        if (abortRef.current === controller) abortRef.current = null;
+      }
     }
   }, [query, scope, workspaceId, ownerId, days]);
 
@@ -138,6 +158,13 @@ export function CommandPalette({
     const handle = setTimeout(() => void runSearch(), 200);
     return () => clearTimeout(handle);
   }, [runSearch]);
+
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+    },
+    [],
+  );
 
   const openHit = useCallback(
     (hit: SearchHit) => {

@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import type { SearchHit, SearchQuery, SearchResult, SearchService } from "./types";
 import { logger } from "@/lib/logger";
+import { measureServerOperation } from "@/lib/performance";
 
 /**
  * Neon Postgres search implementation.
@@ -51,27 +52,34 @@ export class NeonSearchService implements SearchService {
       : sql``;
 
     try {
-      const rows = await db.execute(sql`
-        WITH accessible AS (
+      const rows = await measureServerOperation(
+        "search.query",
+        () =>
+          db.execute(sql`
+        WITH params AS (
+          SELECT
+            ${q}::text AS query,
+            lower(${q})::text AS normalized_query,
+            plainto_tsquery('english', ${q}) AS ts_query
+        ),
+        accessible AS (
           SELECT d.*,
                  w.name AS workspace_name,
                  u.name AS creator_name,
-                 similarity(lower(d.title), lower(${q})) AS title_sim,
                  (
                    CASE
-                     WHEN lower(d.title) = lower(${q}) THEN 1000
-                     WHEN lower(d.title) LIKE lower(${q}) || '%' THEN 800
-                     WHEN similarity(lower(d.title), lower(${q})) > 0.45 THEN 600 + (similarity(lower(d.title), lower(${q})) * 100)
-                     WHEN lower(d.title) LIKE '%' || lower(${q}) || '%' THEN 400
-                     WHEN d.search_vector @@ plainto_tsquery('english', ${q}) THEN 200 + ts_rank_cd(d.search_vector, plainto_tsquery('english', ${q})) * 50
-                     WHEN d.plain_text_content ILIKE '%' || ${q} || '%' THEN 100
-                     WHEN d.breadcrumb_path ILIKE '%' || ${q} || '%' THEN 80
-                     WHEN w.name ILIKE '%' || ${q} || '%' THEN 60
-                     WHEN u.name ILIKE '%' || ${q} || '%' THEN 40
+                     WHEN lower(d.title) = p.normalized_query THEN 1000
+                     WHEN lower(d.title) LIKE p.normalized_query || '%' THEN 800
+                     WHEN similarity(d.title, p.query) > 0.45 THEN 600 + (similarity(d.title, p.query) * 100)
+                     WHEN d.title ILIKE '%' || p.query || '%' THEN 400
+                     WHEN d.search_vector @@ p.ts_query THEN 200 + ts_rank_cd(d.search_vector, p.ts_query) * 50
+                     WHEN w.name ILIKE '%' || p.query || '%' THEN 60
+                     WHEN u.name ILIKE '%' || p.query || '%' THEN 40
                      ELSE 0
                    END
                  ) + (EXTRACT(EPOCH FROM d.updated_at) / 1e12) AS score
           FROM documents d
+          CROSS JOIN params p
           LEFT JOIN workspace_members wm
             ON wm.workspace_id = d.workspace_id
            AND wm.user_id = ${input.userId}
@@ -95,13 +103,11 @@ export class NeonSearchService implements SearchService {
             ${updatedFilter}
             ${parentFilter}
             AND (
-              lower(d.title) LIKE '%' || lower(${q}) || '%'
-              OR similarity(lower(d.title), lower(${q})) > 0.3
-              OR d.search_vector @@ plainto_tsquery('english', ${q})
-              OR d.plain_text_content ILIKE '%' || ${q} || '%'
-              OR d.breadcrumb_path ILIKE '%' || ${q} || '%'
-              OR w.name ILIKE '%' || ${q} || '%'
-              OR u.name ILIKE '%' || ${q} || '%'
+              d.title ILIKE '%' || p.query || '%'
+              OR d.title % p.query
+              OR d.search_vector @@ p.ts_query
+              OR w.name ILIKE '%' || p.query || '%'
+              OR u.name ILIKE '%' || p.query || '%'
             )
         )
         SELECT
@@ -110,11 +116,11 @@ export class NeonSearchService implements SearchService {
           title,
           breadcrumb_path,
           CASE
-            WHEN search_vector @@ plainto_tsquery('english', ${q}) THEN
+            WHEN search_vector @@ params.ts_query THEN
               ts_headline(
                 'english',
                 LEFT(plain_text_content, 4000),
-                plainto_tsquery('english', ${q}),
+                params.ts_query,
                 'StartSel=⟪, StopSel=⟫, MaxWords=28, MinWords=12, MaxFragments=1'
               )
             ELSE LEFT(plain_text_content, 180)
@@ -123,18 +129,19 @@ export class NeonSearchService implements SearchService {
           score,
           updated_at,
           workspace_name,
-          creator_name,
-          COUNT(*) OVER() AS total_count
+          creator_name
         FROM accessible
+        CROSS JOIN params
         WHERE score > 0
         ORDER BY score DESC, updated_at DESC
         LIMIT ${limit}
         OFFSET ${offset}
-      `);
+      `),
+        { workspaceScoped: Boolean(input.workspaceId), limit, offset },
+      );
 
       const resultRows = rows.rows as Array<Record<string, unknown>>;
-      const total =
-        resultRows.length > 0 ? Number(resultRows[0].total_count ?? 0) : 0;
+      const total = resultRows.length;
 
       const hits: SearchHit[] = resultRows.map((row) => ({
         documentId: String(row.document_id),
