@@ -66,19 +66,33 @@ import {
 } from "./turn-into";
 import { actionCreateDocument } from "@/app/actions";
 import { blockDomId, blockIdFromHash } from "@/lib/documents/blocks";
+import {
+  clearDocumentDraft,
+  readDocumentDraft,
+  writeDocumentDraft,
+} from "./draft-storage";
 
-export type SaveStatus = "saved" | "saving" | "dirty" | "error";
+export type SaveStatus =
+  | "saved"
+  | "saving"
+  | "retrying"
+  | "dirty"
+  | "error";
 
-type SaveResult = { ok: true } | { ok: false; error: string };
+type SaveResult =
+  | { ok: true; updatedAt: string }
+  | { ok: false; error: string };
 
 type DocumentEditorProps = {
   documentId: string;
   workspaceId: string;
   initialTitle: string;
   initialContent: Record<string, unknown>;
+  initialUpdatedAt: string;
   onSave: (payload: {
     title: string;
     contentJson: string;
+    expectedUpdatedAt: string;
   }) => Promise<SaveResult>;
   readOnly?: boolean;
 };
@@ -99,6 +113,7 @@ export function DocumentEditor({
   workspaceId,
   initialTitle,
   initialContent,
+  initialUpdatedAt,
   onSave,
   readOnly = false,
 }: DocumentEditorProps) {
@@ -116,6 +131,11 @@ export function DocumentEditor({
   const titleRef = useRef(startingTitle);
   const statusRef = useRef<SaveStatus>("saved");
   const lastSavedRef = useRef<string | null>(null);
+  const revisionRef = useRef(initialUpdatedAt);
+  const retryCountRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveErrorToastRef = useRef<string | number | null>(null);
+  const networkFailureRef = useRef(false);
 
   // The page can be renamed from outside (sidebar "···" menu). When the
   // server sends a new title and there are no unsaved local edits, adopt it
@@ -124,8 +144,9 @@ export function DocumentEditor({
     if (statusRef.current === "saved") {
       setTitle(startingTitle);
       titleRef.current = startingTitle;
+      revisionRef.current = initialUpdatedAt;
     }
-  }, [startingTitle]);
+  }, [startingTitle, initialUpdatedAt]);
   const savingRef = useRef(false);
   const dirtyAgainRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -205,25 +226,55 @@ export function DocumentEditor({
     },
   });
 
+  // Stable handle to the latest save function (avoids self-reference,
+  // which the React Compiler cannot memoize).
+  const saveFnRef = useRef<
+    ((editor: Editor) => Promise<SaveResult>) | null
+  >(null);
+
   // TipTap normalizes stored JSON while constructing the editor (for example,
-  // by adding default attrs). Fingerprint that canonical form once so pressing
-  // save before making an edit does not send a false-positive update.
+  // by adding default attrs). Fingerprint that canonical form and recover a
+  // local draft only when it was based on this exact server revision.
   useEffect(() => {
     if (!editor || lastSavedRef.current !== null) return;
     const currentTitle = titleRef.current.trim() || "Untitled";
-    lastSavedRef.current = `${currentTitle}\0${JSON.stringify(editor.getJSON())}`;
-  }, [editor]);
+    const serverSignature = `${currentTitle}\0${JSON.stringify(editor.getJSON())}`;
+    lastSavedRef.current = serverSignature;
 
-  // Stable handle to the latest save function (avoids self-reference,
-  // which the React Compiler cannot memoize).
-  const saveFnRef = useRef<((editor: Editor) => Promise<void>) | null>(null);
+    const draft = readDocumentDraft(window.localStorage, documentId);
+    if (!draft || draft.baseSignature !== serverSignature) return;
+    const draftSignature = `${draft.title.trim() || "Untitled"}\0${draft.contentJson}`;
+    if (draftSignature === serverSignature) {
+      clearDocumentDraft(window.localStorage, documentId);
+      return;
+    }
+
+    try {
+      const content = JSON.parse(draft.contentJson) as Record<string, unknown>;
+      const frame = window.requestAnimationFrame(() => {
+        titleRef.current = draft.title;
+        setTitle(draft.title);
+        editor.commands.setContent(content);
+        applyStatus("dirty");
+        debounceRef.current = setTimeout(() => {
+          void saveFnRef.current?.(editor);
+        }, AUTOSAVE_DEBOUNCE_MS);
+        toast.info("Recovered your unsaved local draft.");
+      });
+      return () => window.cancelAnimationFrame(frame);
+    } catch {
+      clearDocumentDraft(window.localStorage, documentId);
+    }
+  }, [editor, documentId, applyStatus]);
 
   const performSave = useCallback(
-    async (currentEditor: Editor) => {
-      if (readOnly) return;
+    async (currentEditor: Editor): Promise<SaveResult> => {
+      if (readOnly) {
+        return { ok: true, updatedAt: revisionRef.current };
+      }
       if (savingRef.current) {
         dirtyAgainRef.current = true;
-        return;
+        return { ok: false, error: "A save is already in progress." };
       }
       savingRef.current = true;
       applyStatus("saving");
@@ -236,21 +287,66 @@ export function DocumentEditor({
       if (signature === lastSavedRef.current) {
         applyStatus("saved");
         savingRef.current = false;
-        return;
+        clearDocumentDraft(window.localStorage, documentId);
+        return { ok: true, updatedAt: revisionRef.current };
       }
-      const payload = { title, contentJson };
+      writeDocumentDraft(window.localStorage, documentId, {
+        baseSignature: lastSavedRef.current ?? signature,
+        title: titleRef.current,
+        contentJson,
+      });
+      const payload = {
+        title,
+        contentJson,
+        expectedUpdatedAt: revisionRef.current,
+      };
       let reschedule = false;
+      let outcome: SaveResult;
       try {
         const result = await onSave(payload);
+        networkFailureRef.current = false;
         if (result.ok) {
           lastSavedRef.current = signature;
+          revisionRef.current = result.updatedAt;
+          retryCountRef.current = 0;
+          if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
+          clearDocumentDraft(window.localStorage, documentId);
+          if (saveErrorToastRef.current !== null) {
+            toast.dismiss(saveErrorToastRef.current);
+            saveErrorToastRef.current = null;
+          }
           applyStatus(dirtyAgainRef.current ? "dirty" : "saved");
+          outcome = result;
         } else {
           applyStatus("error");
-          toast.error(result.error);
+          if (saveErrorToastRef.current === null) {
+            saveErrorToastRef.current = toast.error(result.error);
+          }
+          outcome = result;
         }
       } catch {
-        applyStatus("error");
+        networkFailureRef.current = true;
+        retryCountRef.current += 1;
+        const retryDelays = [1_000, 2_000, 5_000];
+        const retryDelay = retryDelays[retryCountRef.current - 1];
+        if (retryDelay !== undefined) {
+          applyStatus("retrying");
+          retryTimerRef.current = setTimeout(() => {
+            void saveFnRef.current?.(currentEditor);
+          }, retryDelay);
+        } else {
+          applyStatus("error");
+          if (saveErrorToastRef.current === null) {
+            saveErrorToastRef.current = toast.error(
+              "Couldn't reach the server. Your draft is stored on this device.",
+            );
+          }
+        }
+        outcome = {
+          ok: false,
+          error: "Couldn't reach the server. Your local draft is safe.",
+        };
       } finally {
         savingRef.current = false;
         if (dirtyAgainRef.current) {
@@ -259,13 +355,17 @@ export function DocumentEditor({
         }
       }
       if (reschedule) {
+        retryCountRef.current = 0;
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
           void saveFnRef.current?.(currentEditor);
         }, AUTOSAVE_DEBOUNCE_MS);
       }
+      return outcome;
     },
-    [onSave, readOnly, applyStatus],
+    [onSave, readOnly, applyStatus, documentId],
   );
 
   useEffect(() => {
@@ -280,7 +380,7 @@ export function DocumentEditor({
       while (savingRef.current) {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
-      await performSave(currentEditor);
+      return performSave(currentEditor);
     },
     [performSave],
   );
@@ -288,13 +388,24 @@ export function DocumentEditor({
   const scheduleSave = useCallback(
     (currentEditor: Editor) => {
       if (readOnly) return;
+      retryCountRef.current = 0;
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
       if (statusRef.current !== "saving") applyStatus("dirty");
+      const contentJson = JSON.stringify(currentEditor.getJSON());
+      writeDocumentDraft(window.localStorage, documentId, {
+        baseSignature:
+          lastSavedRef.current ??
+          `${titleRef.current.trim() || "Untitled"}\0${contentJson}`,
+        title: titleRef.current,
+        contentJson,
+      });
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         void performSave(currentEditor);
       }, AUTOSAVE_DEBOUNCE_MS);
     },
-    [performSave, readOnly, applyStatus],
+    [performSave, readOnly, applyStatus, documentId],
   );
 
   // Mark dirty + debounce on every edit.
@@ -306,6 +417,19 @@ export function DocumentEditor({
       editor.off("update", handler);
     };
   }, [editor, readOnly, scheduleSave]);
+
+  useEffect(() => {
+    if (!editor || readOnly) return;
+    const retryWhenOnline = () => {
+      if (!networkFailureRef.current) return;
+      retryCountRef.current = 0;
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+      void performSave(editor);
+    };
+    window.addEventListener("online", retryWhenOnline);
+    return () => window.removeEventListener("online", retryWhenOnline);
+  }, [editor, performSave, readOnly]);
 
   // Slack search results deep-link to the best matching paragraph. TipTap
   // mounts asynchronously, so observe its DOM until the target appears.
@@ -390,7 +514,12 @@ export function DocumentEditor({
           formData.set("workspaceId", workspaceId);
           formData.set("parentId", documentId);
           formData.set("title", "Untitled");
-          const doc = await actionCreateDocument(formData);
+          const result = await actionCreateDocument(formData);
+          if (!result.ok) {
+            toast.error(result.error, { id: creating });
+            return;
+          }
+          const doc = result.data;
           editor
             .chain()
             .focus()
@@ -404,9 +533,17 @@ export function DocumentEditor({
             })
             .run();
           // Persist the parent before leaving so the link is never lost.
-          await saveNow(editor);
+          const parentSave = await saveNow(editor);
+          if (!parentSave.ok) {
+            toast.error(
+              "Sub-page created, but its link is not saved yet. Retry the save before leaving.",
+              { id: creating },
+            );
+            return;
+          }
           toast.success("Sub-page created", { id: creating });
-          router.push(`/app/${workspaceId}/docs/${doc.id}`);
+          router.push(`/app/${doc.workspaceId}/docs/${doc.id}`);
+          router.refresh();
         } catch {
           toast.error("Couldn't create the sub-page. Please try again.", {
             id: creating,
@@ -531,7 +668,16 @@ export function DocumentEditor({
         <div className="flex h-5 items-center justify-end">
           <SaveIndicator
             status={status}
-            onRetry={() => void performSave(editor)}
+            onRetry={() => {
+              retryCountRef.current = 0;
+              if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+              retryTimerRef.current = null;
+              if (saveErrorToastRef.current !== null) {
+                toast.dismiss(saveErrorToastRef.current);
+                saveErrorToastRef.current = null;
+              }
+              void performSave(editor);
+            }}
           />
         </div>
       )}
@@ -752,10 +898,10 @@ function SaveIndicator({
       aria-live="polite"
       className="flex items-center gap-1 text-xs text-[var(--muted-foreground)]"
     >
-      {status === "saving" ? (
+      {status === "saving" || status === "retrying" ? (
         <>
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Saving…
+          {status === "retrying" ? "Retrying save…" : "Saving…"}
         </>
       ) : status === "dirty" ? (
         "Unsaved changes"

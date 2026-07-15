@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
-import { BookOpen, Clock, FileText, Lock, Plus, Star } from "lucide-react";
+import { notFound } from "next/navigation";
+import { BookOpen, Clock, FileText, Lock, Star } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { requireVerifiedSession } from "@/lib/session";
 import {
@@ -9,8 +9,7 @@ import {
   listFavoriteDocuments,
   listUserWorkspaces,
 } from "@/lib/documents/service";
-import { actionCreateDocument } from "@/app/actions";
-import { Button } from "@/components/ui/button";
+import { CreateDocumentButton } from "@/components/documents/create-document-button";
 
 export default async function WorkspacePage({
   params,
@@ -31,25 +30,6 @@ export default async function WorkspacePage({
 
   const canEdit = workspace.role !== "guest";
 
-  async function createDoc() {
-    "use server";
-    const formData = new FormData();
-    formData.set("workspaceId", workspaceId);
-    formData.set("title", "Untitled");
-    const doc = await actionCreateDocument(formData);
-    redirect(`/app/${workspaceId}/docs/${doc.id}`);
-  }
-
-  async function createWiki() {
-    "use server";
-    const formData = new FormData();
-    formData.set("workspaceId", workspaceId);
-    formData.set("title", "Untitled");
-    formData.set("docType", "wiki");
-    const doc = await actionCreateDocument(formData);
-    redirect(`/app/${workspaceId}/docs/${doc.id}`);
-  }
-
   return (
     <div className="mx-auto max-w-4xl space-y-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -65,18 +45,18 @@ export default async function WorkspacePage({
         </div>
         {canEdit && (
           <div className="flex gap-2">
-            <form action={createWiki}>
-              <Button type="submit" variant="outline" className="gap-1.5">
-                <BookOpen className="h-4 w-4" />
-                New wiki
-              </Button>
-            </form>
-            <form action={createDoc}>
-              <Button type="submit" className="gap-1.5">
-                <Plus className="h-4 w-4" />
-                New page
-              </Button>
-            </form>
+            <CreateDocumentButton
+              workspaceId={workspaceId}
+              docType="wiki"
+              label="New wiki"
+              variant="outline"
+              className="gap-1.5"
+            />
+            <CreateDocumentButton
+              workspaceId={workspaceId}
+              label="New page"
+              className="gap-1.5"
+            />
           </div>
         )}
       </div>
@@ -95,12 +75,11 @@ export default async function WorkspacePage({
               : "Pages your teammates create will show up here."}
           </p>
           {canEdit && (
-            <form action={createDoc} className="mt-6">
-              <Button type="submit" className="gap-1.5">
-                <Plus className="h-4 w-4" />
-                Create your first page
-              </Button>
-            </form>
+            <CreateDocumentButton
+              workspaceId={workspaceId}
+              label="Create your first page"
+              className="mt-6 gap-1.5"
+            />
           )}
         </div>
       ) : (

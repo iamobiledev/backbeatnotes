@@ -766,8 +766,12 @@ export async function saveDocumentContent(opts: {
   documentId: string;
   title?: string;
   contentJson: Record<string, unknown>;
+  expectedUpdatedAt: Date;
 }) {
   const existing = await requireEditableDocument(opts.userId, opts.documentId);
+  if (existing.updatedAt.getTime() !== opts.expectedUpdatedAt.getTime()) {
+    throw new Error("EDIT_CONFLICT");
+  }
 
   const title = opts.title?.trim() || existing.title;
   const normalizedContent = normalizeDocumentBlocks(opts.contentJson).contentJson;
@@ -822,8 +826,14 @@ export async function saveDocumentContent(opts: {
       updatedById: opts.userId,
       updatedAt: new Date(),
     })
-    .where(eq(documents.id, existing.id))
+    .where(
+      and(
+        eq(documents.id, existing.id),
+        eq(documents.updatedAt, opts.expectedUpdatedAt),
+      ),
+    )
     .returning();
+  if (!updated) throw new Error("EDIT_CONFLICT");
 
   await syncDocumentSearchAfterWrite(updated);
   if (title !== existing.title) {

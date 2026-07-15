@@ -75,6 +75,8 @@ const FRIENDLY_ERRORS: Record<string, string> = {
   ADMIN_ONLY: "Only platform admins can create workspaces.",
   NOT_A_WIKI: "Only wikis can be locked.",
   CREATOR_PERMANENT: "The page creator always keeps full access.",
+  EDIT_CONFLICT:
+    "This page changed somewhere else. Your local draft is safe — reload before retrying.",
   PERSONAL_INVITE_ONLY:
     "Personal notebook pages are always invite-only — share them with specific people instead.",
 };
@@ -243,24 +245,44 @@ export async function actionAcceptInvitation(token: string) {
 /* Documents                                                                   */
 /* -------------------------------------------------------------------------- */
 
-export async function actionCreateDocument(formData: FormData) {
+export async function actionCreateDocument(
+  formData: FormData,
+): Promise<
+  ActionResult<{
+    id: string;
+    workspaceId: string;
+    title: string;
+    parentId: string | null;
+  }>
+> {
   const session = await requireVerifiedSession();
-  const workspaceId = String(formData.get("workspaceId") ?? "");
-  const parentId = String(formData.get("parentId") ?? "") || null;
-  const title = String(formData.get("title") ?? "Untitled");
-  const docType =
-    String(formData.get("docType") ?? "doc") === "wiki" ? "wiki" : "doc";
-  if (!workspaceId) throw new Error("workspaceId is required");
+  return run(async () => {
+    const parsed = z
+      .object({
+        workspaceId: z.string().min(1),
+        parentId: z.string().min(1).nullable(),
+        title: z.string().trim().min(1).max(500).default("Untitled"),
+        docType: z.enum(["doc", "wiki"]).default("doc"),
+      })
+      .parse({
+        workspaceId: String(formData.get("workspaceId") ?? ""),
+        parentId: String(formData.get("parentId") ?? "") || null,
+        title: String(formData.get("title") ?? "Untitled"),
+        docType: String(formData.get("docType") ?? "doc"),
+      });
 
-  const doc = await createDocument({
-    userId: session.user.id,
-    workspaceId,
-    parentId,
-    title,
-    docType,
+    const doc = await createDocument({
+      userId: session.user.id,
+      ...parsed,
+    });
+    revalidatePath(`/app/${parsed.workspaceId}`, "layout");
+    return {
+      id: doc.id,
+      workspaceId: doc.workspaceId,
+      title: doc.title,
+      parentId: doc.parentId,
+    };
   });
-  revalidatePath(`/app/${workspaceId}`);
-  return doc;
 }
 
 /** Load a teamspace tree only when the user expands it in the sidebar. */
@@ -342,6 +364,7 @@ export async function actionSaveDocument(input: {
   documentId: string;
   title: string;
   contentJson: string;
+  expectedUpdatedAt: string;
 }): Promise<ActionResult<{ id: string; updatedAt: string }>> {
   const session = await requireVerifiedSession();
   return run(async () => {
@@ -349,6 +372,10 @@ export async function actionSaveDocument(input: {
       .object({
         documentId: z.string().min(1),
         title: z.string().min(1).max(500),
+        expectedUpdatedAt: z
+          .string()
+          .datetime({ offset: true })
+          .transform((value) => new Date(value)),
         contentJson: z
           .string()
           .min(2)
@@ -376,6 +403,7 @@ export async function actionSaveDocument(input: {
           documentId: parsed.documentId,
           title: parsed.title,
           contentJson: parsed.contentJson,
+          expectedUpdatedAt: parsed.expectedUpdatedAt,
         }),
       { documentId: parsed.documentId },
     );

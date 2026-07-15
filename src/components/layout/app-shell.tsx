@@ -120,17 +120,20 @@ export function AppShell({
     ) => {
       if (creating) return;
       startCreating(async () => {
-        try {
-          const formData = new FormData();
-          formData.set("workspaceId", targetWorkspaceId);
-          if (parentId) formData.set("parentId", parentId);
-          formData.set("title", "Untitled");
-          formData.set("docType", docType);
-          const doc = await actionCreateDocument(formData);
-          router.push(`/app/${targetWorkspaceId}/docs/${doc.id}`);
-        } catch {
-          toast.error("Couldn't create the page. Please try again.");
+        const formData = new FormData();
+        formData.set("workspaceId", targetWorkspaceId);
+        if (parentId) formData.set("parentId", parentId);
+        formData.set("title", "Untitled");
+        formData.set("docType", docType);
+        const result = await actionCreateDocument(formData);
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
         }
+        router.push(
+          `/app/${result.data.workspaceId}/docs/${result.data.id}`,
+        );
+        router.refresh();
       });
     },
     [creating, router, workspace.id],
