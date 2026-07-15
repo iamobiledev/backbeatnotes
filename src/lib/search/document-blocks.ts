@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   documents,
@@ -17,10 +17,12 @@ import {
   createOpenAIEmbeddings,
   isOpenAIEmbeddingsConfigured,
 } from "@/lib/ai/openai-embeddings";
+import { isMissingPostgresRelation } from "@/lib/db/errors";
 import { logger } from "@/lib/logger";
 import type { SearchHit } from "./types";
 
 const EMBEDDING_BATCH_SIZE = 64;
+const UPSERT_BATCH_SIZE = 250;
 
 export function buildBlockEmbeddingInput(opts: {
   title: string;
@@ -86,61 +88,124 @@ export async function syncDocumentSearchBlocks(opts: {
     title: opts.title,
     contentJson: opts.contentJson,
   });
-  const existing = await opts.db
-    .select({
-      id: documentSearchBlocks.id,
-      blockId: documentSearchBlocks.blockId,
-      inputHash: documentSearchBlocks.inputHash,
-    })
-    .from(documentSearchBlocks)
-    .where(eq(documentSearchBlocks.documentId, opts.documentId));
-  const existingByBlockId = new Map(existing.map((row) => [row.blockId, row]));
 
-  for (const block of prepared.blocks) {
-    const current = existingByBlockId.get(block.blockId);
-    if (!current) {
-      await opts.db.insert(documentSearchBlocks).values({
-        id: nanoid(),
-        documentId: opts.documentId,
-        blockId: block.blockId,
-        blockType: block.blockType,
-        position: block.position,
-        textContent: block.text.slice(0, EMBEDDING_BLOCK_MAX_CHARS),
-        inputHash: block.inputHash,
-      });
-      continue;
-    }
-
-    const inputChanged = current.inputHash !== block.inputHash;
+  for (
+    let start = 0;
+    start < prepared.blocks.length;
+    start += UPSERT_BATCH_SIZE
+  ) {
+    const batch = prepared.blocks.slice(start, start + UPSERT_BATCH_SIZE);
     await opts.db
-      .update(documentSearchBlocks)
-      .set({
-        blockType: block.blockType,
-        position: block.position,
-        textContent: block.text.slice(0, EMBEDDING_BLOCK_MAX_CHARS),
-        inputHash: block.inputHash,
-        ...(inputChanged ? { embedding: null, embeddedAt: null } : {}),
-        updatedAt: new Date(),
+      .insert(documentSearchBlocks)
+      .values(
+        batch.map((block) => ({
+          id: nanoid(),
+          documentId: opts.documentId,
+          blockId: block.blockId,
+          blockType: block.blockType,
+          position: block.position,
+          textContent: block.text.slice(0, EMBEDDING_BLOCK_MAX_CHARS),
+          inputHash: block.inputHash,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [
+          documentSearchBlocks.documentId,
+          documentSearchBlocks.blockId,
+        ],
+        set: {
+          blockType: sql`excluded.block_type`,
+          position: sql`excluded.position`,
+          textContent: sql`excluded.text_content`,
+          inputHash: sql`excluded.input_hash`,
+          embedding: sql`CASE
+            WHEN ${documentSearchBlocks.inputHash} = excluded.input_hash
+            THEN ${documentSearchBlocks.embedding}
+            ELSE NULL
+          END`,
+          embeddedAt: sql`CASE
+            WHEN ${documentSearchBlocks.inputHash} = excluded.input_hash
+            THEN ${documentSearchBlocks.embeddedAt}
+            ELSE NULL
+          END`,
+          updatedAt: new Date(),
+        },
       })
-      .where(
-        and(
-          eq(documentSearchBlocks.documentId, opts.documentId),
-          eq(documentSearchBlocks.blockId, block.blockId),
-        ),
-      );
   }
 
   const currentBlockIds = prepared.blocks.map((block) => block.blockId);
-  const removedRowIds = existing
-    .filter((row) => !currentBlockIds.includes(row.blockId))
-    .map((row) => row.id);
-  if (removedRowIds.length > 0) {
-    await opts.db
-      .delete(documentSearchBlocks)
-      .where(inArray(documentSearchBlocks.id, removedRowIds));
-  }
+  await opts.db.delete(documentSearchBlocks).where(
+    currentBlockIds.length === 0
+      ? eq(documentSearchBlocks.documentId, opts.documentId)
+      : and(
+          eq(documentSearchBlocks.documentId, opts.documentId),
+          notInArray(documentSearchBlocks.blockId, currentBlockIds),
+        ),
+  );
 
   return prepared.blocks;
+}
+
+export type DocumentSearchRefreshResult =
+  | { status: "synced"; blocks: number; embeddingsUpdated: number }
+  | { status: "stale" }
+  | { status: "schema-unavailable" }
+  | { status: "failed" };
+
+/**
+ * Refresh a derived search index without ever rejecting the caller.
+ *
+ * `expectedUpdatedAt` prevents an older deferred autosave from overwriting a
+ * newer index snapshot. A backfill remains the repair path if serverless
+ * after-response work is interrupted.
+ */
+export async function refreshDocumentSearchIndex(opts: {
+  documentId: string;
+  expectedUpdatedAt: Date;
+  title: string;
+  contentJson: Record<string, unknown>;
+}): Promise<DocumentSearchRefreshResult> {
+  try {
+    const db = getDb();
+    const [current] = await db
+      .select({ updatedAt: documents.updatedAt })
+      .from(documents)
+      .where(eq(documents.id, opts.documentId))
+      .limit(1);
+
+    if (
+      !current ||
+      current.updatedAt.getTime() !== opts.expectedUpdatedAt.getTime()
+    ) {
+      return { status: "stale" };
+    }
+
+    const blocks = await syncDocumentSearchBlocks({
+      db,
+      documentId: opts.documentId,
+      title: opts.title,
+      contentJson: opts.contentJson,
+    });
+    const embeddings = await refreshDocumentBlockEmbeddings(opts.documentId);
+    return {
+      status: "synced",
+      blocks: blocks.length,
+      embeddingsUpdated: embeddings.updated,
+    };
+  } catch (error) {
+    if (isMissingPostgresRelation(error, "document_search_blocks")) {
+      logger.warn("search.document_index_schema_unavailable", {
+        documentId: opts.documentId,
+        postgresCode: "42P01",
+      });
+      return { status: "schema-unavailable" };
+    }
+    logger.error("search.document_index_refresh_failed", {
+      documentId: opts.documentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { status: "failed" };
+  }
 }
 
 export type EmbeddingRefreshResult = {
@@ -254,22 +319,39 @@ export async function attachLexicalBlockMatches(
 ): Promise<SearchHit[]> {
   if (hits.length === 0) return hits;
   const db = getDb();
-  const rows = await db
-    .select({
-      documentId: documentSearchBlocks.documentId,
-      blockId: documentSearchBlocks.blockId,
-      blockType: documentSearchBlocks.blockType,
-      text: documentSearchBlocks.textContent,
-      position: documentSearchBlocks.position,
-    })
-    .from(documentSearchBlocks)
-    .where(
-      inArray(
-        documentSearchBlocks.documentId,
-        hits.map((hit) => hit.documentId),
-      ),
-    )
-    .orderBy(asc(documentSearchBlocks.position));
+  let rows: Array<{
+    documentId: string;
+    blockId: string;
+    blockType: string;
+    text: string;
+    position: number;
+  }>;
+  try {
+    rows = await db
+      .select({
+        documentId: documentSearchBlocks.documentId,
+        blockId: documentSearchBlocks.blockId,
+        blockType: documentSearchBlocks.blockType,
+        text: documentSearchBlocks.textContent,
+        position: documentSearchBlocks.position,
+      })
+      .from(documentSearchBlocks)
+      .where(
+        inArray(
+          documentSearchBlocks.documentId,
+          hits.map((hit) => hit.documentId),
+        ),
+      )
+      .orderBy(asc(documentSearchBlocks.position));
+  } catch (error) {
+    if (isMissingPostgresRelation(error, "document_search_blocks")) {
+      logger.warn("search.lexical_blocks_schema_unavailable", {
+        postgresCode: "42P01",
+      });
+      return hits;
+    }
+    throw error;
+  }
 
   const best = new Map<
     string,

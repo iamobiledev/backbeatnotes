@@ -53,7 +53,6 @@ import { normalizeDocumentBlocks } from "./blocks";
 import { slugify } from "@/lib/utils";
 import { logger } from "@/lib/logger";
 import { measureServerOperation } from "@/lib/performance";
-import { syncDocumentSearchBlocks } from "@/lib/search/document-blocks";
 
 const PUBLIC_DOCUMENTS_TAG = "public-documents";
 
@@ -65,12 +64,22 @@ function invalidatePublicDocument(slug: string | null | undefined) {
   if (slug) revalidateTag(publicDocumentTag(slug), { expire: 0 });
 }
 
-function refreshDocumentEmbeddingsAfterResponse(documentId: string) {
+function refreshDocumentSearchAfterResponse(doc: {
+  id: string;
+  title: string;
+  contentJson: Record<string, unknown>;
+  updatedAt: Date;
+}) {
   after(async () => {
-    const { refreshDocumentBlockEmbeddings } = await import(
+    const { refreshDocumentSearchIndex } = await import(
       "@/lib/search/document-blocks"
     );
-    await refreshDocumentBlockEmbeddings(documentId);
+    await refreshDocumentSearchIndex({
+      documentId: doc.id,
+      expectedUpdatedAt: doc.updatedAt,
+      title: doc.title,
+      contentJson: doc.contentJson,
+    });
   });
 }
 
@@ -546,6 +555,35 @@ export async function isFavorited(userId: string, documentId: string) {
 /* Create / save                                                               */
 /* -------------------------------------------------------------------------- */
 
+async function resolveParentAndBreadcrumb(opts: {
+  db: Database;
+  workspaceId: string;
+  requestedParentId?: string | null;
+  title: string;
+}) {
+  if (!opts.requestedParentId) {
+    return { parentId: null, breadcrumbPath: opts.title };
+  }
+
+  const [parent] = await opts.db
+    .select({
+      workspaceId: documents.workspaceId,
+      title: documents.title,
+      breadcrumbPath: documents.breadcrumbPath,
+    })
+    .from(documents)
+    .where(eq(documents.id, opts.requestedParentId))
+    .limit(1);
+
+  if (!parent || parent.workspaceId !== opts.workspaceId) {
+    return { parentId: null, breadcrumbPath: opts.title };
+  }
+  return {
+    parentId: opts.requestedParentId,
+    breadcrumbPath: `${parent.breadcrumbPath || parent.title} / ${opts.title}`,
+  };
+}
+
 export async function createDocument(opts: {
   userId: string;
   workspaceId: string;
@@ -561,25 +599,12 @@ export async function createDocument(opts: {
     type: "doc",
     content: [{ type: "paragraph" }],
   }).contentJson;
-
-  let parentId: string | null = opts.parentId ?? null;
-  let breadcrumbPath = title;
-  if (parentId) {
-    const [parent] = await db
-      .select({
-        workspaceId: documents.workspaceId,
-        title: documents.title,
-        breadcrumbPath: documents.breadcrumbPath,
-      })
-      .from(documents)
-      .where(eq(documents.id, parentId))
-      .limit(1);
-    if (!parent || parent.workspaceId !== opts.workspaceId) {
-      parentId = null;
-    } else {
-      breadcrumbPath = `${parent.breadcrumbPath || parent.title} / ${title}`;
-    }
-  }
+  const { parentId, breadcrumbPath } = await resolveParentAndBreadcrumb({
+    db,
+    workspaceId: opts.workspaceId,
+    requestedParentId: opts.parentId,
+    title,
+  });
 
   const [doc] = await db
     .insert(documents)
@@ -597,12 +622,7 @@ export async function createDocument(opts: {
     })
     .returning();
 
-  await syncDocumentSearchBlocks({
-    db,
-    documentId: doc.id,
-    title: doc.title,
-    contentJson: doc.contentJson,
-  });
+  refreshDocumentSearchAfterResponse(doc);
   await recordDocumentActivity({
     documentId: doc.id,
     userId: opts.userId,
@@ -620,37 +640,44 @@ export async function duplicateDocument(opts: {
 }) {
   const source = await getDocumentForUser(opts.userId, opts.documentId);
   if (!source) throw new Error("NOT_FOUND");
-
-  const copy = await createDocument({
-    userId: opts.userId,
-    workspaceId: source.workspaceId,
-    parentId: source.parentId,
-    title: `${source.title} (copy)`,
-    docType: source.docType,
-  });
-
+  await requireMembership(opts.userId, source.workspaceId, "member");
   const db = getDb();
+  const id = nanoid();
+  const title = `${source.title} (copy)`;
   const copiedContent = normalizeDocumentBlocks(source.contentJson, {
     regenerateIds: true,
   }).contentJson;
-  const [updated] = await db
-    .update(documents)
-    .set({
+  const { parentId, breadcrumbPath } = await resolveParentAndBreadcrumb({
+    db,
+    workspaceId: source.workspaceId,
+    requestedParentId: source.parentId,
+    title,
+  });
+  const [copy] = await db
+    .insert(documents)
+    .values({
+      id,
+      workspaceId: source.workspaceId,
+      parentId,
+      title,
+      breadcrumbPath,
+      docType: source.docType,
       contentJson: copiedContent,
       plainTextContent: extractPlainText(copiedContent),
       icon: source.icon,
+      createdById: opts.userId,
+      updatedById: opts.userId,
     })
-    .where(eq(documents.id, copy.id))
     .returning();
-  await syncDocumentSearchBlocks({
-    db,
-    documentId: updated.id,
-    title: updated.title,
-    contentJson: updated.contentJson,
+  refreshDocumentSearchAfterResponse(copy);
+  await recordDocumentActivity({
+    documentId: copy.id,
+    userId: opts.userId,
+    action: "created",
+    metadata: { docType: copy.docType, duplicatedFrom: source.id },
   });
-  refreshDocumentEmbeddingsAfterResponse(updated.id);
   revalidatePath(`/app/${source.workspaceId}`, "layout");
-  return updated;
+  return copy;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -732,34 +759,42 @@ export async function saveDocumentContent(opts: {
   const plainTextContent = extractPlainText(normalizedContent);
   const db = getDb();
 
-  // Snapshot the previous state when the edit is significant.
-  const [latestVersion] = await db
-    .select({
-      version: documentVersions.version,
-      createdAt: documentVersions.createdAt,
-    })
-    .from(documentVersions)
-    .where(eq(documentVersions.documentId, existing.id))
-    .orderBy(desc(documentVersions.version))
-    .limit(1);
+  // Version history is valuable, but a snapshot failure must never discard
+  // the user's current edit.
+  try {
+    const [latestVersion] = await db
+      .select({
+        version: documentVersions.version,
+        createdAt: documentVersions.createdAt,
+      })
+      .from(documentVersions)
+      .where(eq(documentVersions.documentId, existing.id))
+      .orderBy(desc(documentVersions.version))
+      .limit(1);
 
-  const createVersion = shouldCreateVersion({
-    lastVersionAt: latestVersion?.createdAt ?? null,
-    previousTitle: existing.title,
-    nextTitle: title,
-    previousPlainText: existing.plainTextContent,
-    nextPlainText: plainTextContent,
-  });
+    const createVersion = shouldCreateVersion({
+      lastVersionAt: latestVersion?.createdAt ?? null,
+      previousTitle: existing.title,
+      nextTitle: title,
+      previousPlainText: existing.plainTextContent,
+      nextPlainText: plainTextContent,
+    });
 
-  if (createVersion) {
-    await db.insert(documentVersions).values({
-      id: nanoid(),
+    if (createVersion) {
+      await db.insert(documentVersions).values({
+        id: nanoid(),
+        documentId: existing.id,
+        version: (latestVersion?.version ?? 0) + 1,
+        title: existing.title,
+        contentJson: existing.contentJson,
+        plainTextContent: existing.plainTextContent,
+        createdById: opts.userId,
+      });
+    }
+  } catch (error) {
+    logger.error("document.version_snapshot_failed", {
       documentId: existing.id,
-      version: (latestVersion?.version ?? 0) + 1,
-      title: existing.title,
-      contentJson: existing.contentJson,
-      plainTextContent: existing.plainTextContent,
-      createdById: opts.userId,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 
@@ -775,13 +810,7 @@ export async function saveDocumentContent(opts: {
     .where(eq(documents.id, existing.id))
     .returning();
 
-  await syncDocumentSearchBlocks({
-    db,
-    documentId: updated.id,
-    title: updated.title,
-    contentJson: updated.contentJson,
-  });
-  refreshDocumentEmbeddingsAfterResponse(updated.id);
+  refreshDocumentSearchAfterResponse(updated);
   if (title !== existing.title) {
     await recomputeBreadcrumbs(db, existing.id);
     // A renamed page can be embedded as a sub-page in any published page.
@@ -813,22 +842,29 @@ export async function saveDocumentContent(opts: {
 
   // Notify participants after the response is sent (throttled inside).
   after(async () => {
-    const { notifyDocumentEdited } = await import("@/lib/notifications");
-    const [actor] = await db
-      .select({ name: user.name })
-      .from(user)
-      .where(eq(user.id, opts.userId))
-      .limit(1);
-    await notifyDocumentEdited({
-      doc: {
-        id: updated.id,
-        workspaceId: updated.workspaceId,
-        title: updated.title,
-        createdById: updated.createdById,
-      },
-      actorId: opts.userId,
-      actorName: actor?.name ?? "Someone",
-    });
+    try {
+      const { notifyDocumentEdited } = await import("@/lib/notifications");
+      const [actor] = await db
+        .select({ name: user.name })
+        .from(user)
+        .where(eq(user.id, opts.userId))
+        .limit(1);
+      await notifyDocumentEdited({
+        doc: {
+          id: updated.id,
+          workspaceId: updated.workspaceId,
+          title: updated.title,
+          createdById: updated.createdById,
+        },
+        actorId: opts.userId,
+        actorName: actor?.name ?? "Someone",
+      });
+    } catch (error) {
+      logger.error("document.edit_notification_failed", {
+        documentId: updated.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   });
 
   return updated;
@@ -847,13 +883,7 @@ export async function renameDocument(opts: {
     .set({ title, updatedById: opts.userId, updatedAt: new Date() })
     .where(eq(documents.id, existing.id))
     .returning();
-  await syncDocumentSearchBlocks({
-    db,
-    documentId: updated.id,
-    title: updated.title,
-    contentJson: updated.contentJson,
-  });
-  refreshDocumentEmbeddingsAfterResponse(updated.id);
+  refreshDocumentSearchAfterResponse(updated);
   await recomputeBreadcrumbs(db, existing.id);
   await recordDocumentActivity({
     documentId: existing.id,
@@ -1303,13 +1333,7 @@ export async function restoreDocumentVersion(opts: {
     .where(eq(documents.id, existing.id))
     .returning();
 
-  await syncDocumentSearchBlocks({
-    db,
-    documentId: updated.id,
-    title: updated.title,
-    contentJson: updated.contentJson,
-  });
-  refreshDocumentEmbeddingsAfterResponse(updated.id);
+  refreshDocumentSearchAfterResponse(updated);
   await recomputeBreadcrumbs(db, existing.id);
   await recordDocumentActivity({
     documentId: existing.id,

@@ -11,6 +11,7 @@ import type {
 import { logger } from "@/lib/logger";
 import { measureServerOperation } from "@/lib/performance";
 import { EMBEDDING_DIMENSIONS } from "@/lib/ai/embedding-config";
+import { isMissingPostgresRelation } from "@/lib/db/errors";
 
 function workspaceSetFilter(workspaceIds: string[] | undefined) {
   if (workspaceIds === undefined) return sql``;
@@ -280,6 +281,12 @@ export class NeonSearchService implements SearchService {
       });
       return { hits, total: hits.length, query };
     } catch (error) {
+      if (isMissingPostgresRelation(error, "document_search_blocks")) {
+        logger.warn("search.semantic_schema_unavailable", {
+          postgresCode: "42P01",
+        });
+        return { hits: [], total: 0, query };
+      }
       logger.error("search.semantic_failed", {
         error: error instanceof Error ? error.message : String(error),
       });
