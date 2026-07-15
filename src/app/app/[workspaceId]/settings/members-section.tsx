@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,88 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
   guest: "Viewer — read-only access",
 };
 
+/**
+ * Isolated invite form so typing in #invite-email does not re-render the
+ * members/invitations lists (keeps Interaction to Next Paint low).
+ */
+function InviteMemberForm({ workspaceId }: { workspaceId: string }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [role, setRole] = useState<"admin" | "member" | "guest">("member");
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <form
+      ref={formRef}
+      className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--card)] p-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const trimmed = String(form.get("email") ?? "").trim();
+        if (!trimmed) return;
+        startTransition(async () => {
+          const result = await actionInviteMember({
+            workspaceId,
+            email: trimmed,
+            role,
+          });
+          if (result.ok) {
+            toast.success(`Invitation sent to ${trimmed}`);
+            formRef.current?.reset();
+            setRole("member");
+          } else {
+            toast.error(result.error);
+          }
+        });
+      }}
+    >
+      <h3 className="flex items-center gap-1.5 text-sm font-medium">
+        <UserPlus className="h-4 w-4 text-[var(--muted-foreground)]" />
+        Invite a teammate
+      </h3>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <div className="flex-1">
+          <Label htmlFor="invite-email" className="sr-only">
+            Email
+          </Label>
+          <Input
+            id="invite-email"
+            name="email"
+            type="email"
+            required
+            autoComplete="email"
+            placeholder="teammate@company.com"
+            disabled={pending}
+          />
+        </div>
+        <div className="w-full sm:w-40">
+          <Label htmlFor="invite-role" className="sr-only">
+            Role
+          </Label>
+          <Select
+            id="invite-role"
+            name="role"
+            value={role}
+            disabled={pending}
+            onChange={(event) =>
+              setRole(event.target.value as "admin" | "member" | "guest")
+            }
+          >
+            <option value="member">Editor</option>
+            <option value="guest">Viewer</option>
+            <option value="admin">Admin</option>
+          </Select>
+        </div>
+        <Button type="submit" disabled={pending}>
+          {pending ? "Sending…" : "Send invite"}
+        </Button>
+      </div>
+      <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+        {ROLE_DESCRIPTIONS[role]}
+      </p>
+    </form>
+  );
+}
+
 export function MembersSection({
   workspaceId,
   currentUserId,
@@ -52,27 +134,7 @@ export function MembersSection({
   members: Member[];
   invitations: Invitation[];
 }) {
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"admin" | "member" | "guest">("member");
   const [pending, startTransition] = useTransition();
-
-  const invite = () => {
-    const trimmed = email.trim();
-    if (!trimmed) return;
-    startTransition(async () => {
-      const result = await actionInviteMember({
-        workspaceId,
-        email: trimmed,
-        role,
-      });
-      if (result.ok) {
-        toast.success(`Invitation sent to ${trimmed}`);
-        setEmail("");
-      } else {
-        toast.error(result.error);
-      }
-    });
-  };
 
   const changeRole = (targetUserId: string, nextRole: string) => {
     startTransition(async () => {
@@ -254,57 +316,7 @@ export function MembersSection({
         </div>
       )}
 
-      {isAdmin && (
-        <form
-          className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--card)] p-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            invite();
-          }}
-        >
-          <h3 className="flex items-center gap-1.5 text-sm font-medium">
-            <UserPlus className="h-4 w-4 text-[var(--muted-foreground)]" />
-            Invite a teammate
-          </h3>
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-            <div className="flex-1">
-              <Label htmlFor="invite-email" className="sr-only">
-                Email
-              </Label>
-              <Input
-                id="invite-email"
-                type="email"
-                required
-                placeholder="teammate@company.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-            </div>
-            <div className="w-full sm:w-40">
-              <Label htmlFor="invite-role" className="sr-only">
-                Role
-              </Label>
-              <Select
-                id="invite-role"
-                value={role}
-                onChange={(event) =>
-                  setRole(event.target.value as "admin" | "member" | "guest")
-                }
-              >
-                <option value="member">Editor</option>
-                <option value="guest">Viewer</option>
-                <option value="admin">Admin</option>
-              </Select>
-            </div>
-            <Button type="submit" disabled={pending || !email.trim()}>
-              {pending ? "Sending…" : "Send invite"}
-            </Button>
-          </div>
-          <p className="mt-2 text-xs text-[var(--muted-foreground)]">
-            {ROLE_DESCRIPTIONS[role]}
-          </p>
-        </form>
-      )}
+      {isAdmin && <InviteMemberForm workspaceId={workspaceId} />}
     </section>
   );
 }
