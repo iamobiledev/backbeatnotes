@@ -116,6 +116,7 @@ test.describe.serial("invitation onboarding", () => {
     await expect(
       invitee.page.getByRole("button", { name: "Accept invitation" }),
     ).toBeVisible({ timeout: 15_000 });
+    await shot(invitee.page, "34-workspace-invitation-ready-to-accept");
     expect(
       psql(
         `SELECT email_verified FROM "user" WHERE email='${workspaceInvitee}'`,
@@ -217,6 +218,7 @@ test.describe.serial("invitation onboarding", () => {
     await expect(
       invitee.page.getByRole("button", { name: "Open the page" }),
     ).toBeVisible({ timeout: 15_000 });
+    await shot(invitee.page, "35-document-invitation-ready-to-open");
     await invitee.page.getByRole("button", { name: "Open the page" }).click();
     await invitee.page.waitForURL(new RegExp(`/docs/${documentId}$`));
     await expect(
