@@ -184,19 +184,25 @@ test.describe.serial("core flows", () => {
     );
     const childUrl = page.url();
     // New pages open with an empty title + "New page" placeholder.
-    await expect(page.getByLabel("Document title")).toHaveValue("");
+    const childTitle = page
+      .getByLabel("Document title")
+      .filter({ visible: true });
+    await expect(childTitle).toHaveValue("");
 
     // Rename the child, then confirm the parent's link text follows.
-    await page.getByLabel("Document title").fill(`Chapter One ${runId}`);
+    await childTitle.fill(`Chapter One ${runId}`);
     await page.keyboard.press("ControlOrMeta+s");
-    await expect(page.getByText("Saved", { exact: true })).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(
+      page.getByText("Saved", { exact: true }).filter({ visible: true }),
+    ).toBeVisible({ timeout: 10_000 });
 
     await page.goto(docUrl);
     const subpageLink = page
       .locator(".ProseMirror [data-type='subpage'] a")
       .first();
+    await expect(
+      page.locator(".ProseMirror [data-type='subpage'] a"),
+    ).toHaveCount(1);
     await expect(subpageLink).toContainText(`Chapter One ${runId}`);
     await shot(page, "02b-subpage-link");
 
@@ -459,7 +465,9 @@ test.describe.serial("core flows", () => {
     await page.getByRole("link", { name: "Trash" }).click();
     await page.waitForURL(/\/trash/);
     const trashedTitle = `${docTitle} v2`;
-    await expect(page.getByText(trashedTitle)).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: trashedTitle, exact: true }),
+    ).toBeVisible();
     await shot(page, "07-trash");
 
     // Restore the parent page specifically (its sub-page is also listed).

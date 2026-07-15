@@ -1,7 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -36,19 +43,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { signOut } from "@/lib/auth-client";
 import { useTheme, type ThemePreference } from "@/components/theme/theme";
-import { actionCreateDocument } from "@/app/actions";
+import {
+  actionCreateDocument,
+  actionListWorkspaceTree,
+} from "@/app/actions";
 import type { DocumentTreeNode, WorkspaceSummary } from "@/lib/documents/types";
 import { DocumentTree } from "./document-tree";
-import { CommandPalette } from "@/components/search/command-palette";
-import { ShortcutsDialog } from "./shortcuts-dialog";
+
+const CommandPalette = dynamic(() =>
+  import("@/components/search/command-palette").then(
+    (module) => module.CommandPalette,
+  ),
+);
+const ShortcutsDialog = dynamic(() =>
+  import("./shortcuts-dialog").then((module) => module.ShortcutsDialog),
+);
 
 type WorkspaceTree = {
   workspaceId: string;
@@ -89,10 +101,15 @@ export function AppShell({
   const router = useRouter();
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [creating, startCreating] = useTransition();
 
-  const favoriteIdSet = new Set(favoriteIds);
+  const favoriteIdSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
+  const treeByWorkspace = useMemo(
+    () => new Map(trees.map((tree) => [tree.workspaceId, tree.nodes])),
+    [trees],
+  );
   const canEditDocs = workspace.role !== "guest";
 
   const createPage = useCallback(
@@ -103,25 +120,38 @@ export function AppShell({
     ) => {
       if (creating) return;
       startCreating(async () => {
-        try {
-          const formData = new FormData();
-          formData.set("workspaceId", targetWorkspaceId);
-          if (parentId) formData.set("parentId", parentId);
-          formData.set("title", "Untitled");
-          formData.set("docType", docType);
-          const doc = await actionCreateDocument(formData);
-          router.push(`/app/${targetWorkspaceId}/docs/${doc.id}`);
-        } catch {
-          toast.error("Couldn't create the page. Please try again.");
+        const formData = new FormData();
+        formData.set("workspaceId", targetWorkspaceId);
+        if (parentId) formData.set("parentId", parentId);
+        formData.set("title", "Untitled");
+        formData.set("docType", docType);
+        const result = await actionCreateDocument(formData);
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
         }
+        router.push(
+          `/app/${result.data.workspaceId}/docs/${result.data.id}`,
+        );
+        router.refresh();
       });
     },
     [creating, router, workspace.id],
   );
 
-  // Global keyboard shortcuts (Cmd+K handled by the palette itself).
+  // Lightweight global shortcuts mount heavy dialogs only on first use.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
+      if (event.key === "Escape" && drawerOpen) {
+        event.preventDefault();
+        setDrawerOpen(false);
+        return;
+      }
       const target = event.target as HTMLElement | null;
       const typing =
         target &&
@@ -146,14 +176,12 @@ export function AppShell({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [createPage, canEditDocs]);
+  }, [createPage, canEditDocs, drawerOpen]);
 
   const isHome = pathname === `/app/${workspace.id}`;
 
   const personal = workspaces.find((w) => w.isPersonal);
-  const personalTree = personal
-    ? trees.find((t) => t.workspaceId === personal.id)?.nodes ?? []
-    : [];
+  const personalTree = personal ? treeByWorkspace.get(personal.id) ?? [] : [];
   const teamspaces = workspaces.filter((w) => !w.isPersonal);
 
   const sidebar = (
@@ -189,9 +217,7 @@ export function AppShell({
           trailing={
             <kbd className="text-[11px] text-[var(--muted-foreground)]">⌘K</kbd>
           }
-          onClick={() =>
-            window.dispatchEvent(new CustomEvent("docloom:open-search"))
-          }
+          onClick={() => setSearchOpen(true)}
         />
         <SidebarItem
           icon={<Home className="h-4 w-4" />}
@@ -301,20 +327,23 @@ export function AppShell({
               Teamspaces
             </p>
             <ul className="space-y-px">
-              {teamspaces.map((ws) => (
-                <TeamspaceItem
-                  key={ws.id}
-                  workspace={ws}
-                  nodes={trees.find((t) => t.workspaceId === ws.id)?.nodes ?? []}
-                  isCurrent={ws.id === workspace.id}
-                  pathname={pathname ?? ""}
-                  favoriteIds={favoriteIdSet}
-                  creating={creating}
-                  onCreatePage={(parentId, docType) =>
-                    createPage(parentId, docType, ws.id)
-                  }
-                />
-              ))}
+              {teamspaces.map((ws) => {
+                const initialNodes = treeByWorkspace.get(ws.id);
+                return (
+                  <TeamspaceItem
+                    key={ws.id}
+                    workspace={ws}
+                    initialNodes={initialNodes}
+                    isCurrent={ws.id === workspace.id}
+                    pathname={pathname ?? ""}
+                    favoriteIds={favoriteIdSet}
+                    creating={creating}
+                    onCreatePage={(parentId, docType) =>
+                      createPage(parentId, docType, ws.id)
+                    }
+                  />
+                );
+              })}
             </ul>
           </div>
         )}
@@ -334,32 +363,30 @@ export function AppShell({
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex min-h-screen w-full">
-        {/* Desktop sidebar */}
-        <aside className="sticky top-0 hidden h-screen w-60 shrink-0 border-r border-[var(--border)] bg-[var(--sidebar)] py-2 md:block">
+        {drawerOpen && (
+          <button
+            type="button"
+            aria-label="Close navigation"
+            className="fixed inset-0 z-40 bg-black/35 md:hidden"
+            onPointerDown={() => setDrawerOpen(false)}
+            onClick={() => setDrawerOpen(false)}
+          />
+        )}
+
+        {/* One responsive sidebar: fixed drawer on mobile, sticky on desktop. */}
+        <aside
+          className={`fixed inset-y-0 left-0 z-50 h-screen w-72 max-w-[85vw] shrink-0 border-r border-[var(--border)] bg-[var(--sidebar)] py-2 transition-transform duration-150 md:sticky md:top-0 md:z-auto md:w-60 md:max-w-none md:translate-x-0 ${
+            drawerOpen
+              ? "visible translate-x-0"
+              : "invisible -translate-x-full md:visible"
+          }`}
+          onClickCapture={(event) => {
+            const target = event.target as HTMLElement;
+            if (target.closest("a")) setDrawerOpen(false);
+          }}
+        >
           {sidebar}
         </aside>
-
-        {/* Mobile drawer */}
-        <Dialog open={drawerOpen} onOpenChange={setDrawerOpen}>
-          <DialogContent
-            hideClose
-            className="fixed inset-y-0 left-0 h-full w-72 max-w-[85vw] translate-x-0 translate-y-0 rounded-none border-y-0 border-l-0 bg-[var(--sidebar)] p-0 py-2 top-0 data-[state=open]:animate-fade md:hidden"
-            style={{ left: 0, top: 0, transform: "none" }}
-            aria-describedby={undefined}
-          >
-            <DialogTitle className="sr-only">Navigation</DialogTitle>
-            {/* Close the drawer when any link inside is followed. */}
-            <div
-              className="h-full"
-              onClickCapture={(event) => {
-                const target = event.target as HTMLElement;
-                if (target.closest("a")) setDrawerOpen(false);
-              }}
-            >
-              {sidebar}
-            </div>
-          </DialogContent>
-        </Dialog>
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-10 flex h-11 items-center gap-2 bg-[color-mix(in_oklab,var(--background)_88%,transparent)] px-3 backdrop-blur md:px-4">
@@ -389,9 +416,7 @@ export function AppShell({
                 size="icon"
                 className="h-8 w-8 md:hidden"
                 aria-label="Search"
-                onClick={() =>
-                  window.dispatchEvent(new CustomEvent("docloom:open-search"))
-                }
+                onClick={() => setSearchOpen(true)}
               >
                 <Search className="h-4 w-4" />
               </Button>
@@ -444,8 +469,16 @@ export function AppShell({
         </div>
       </div>
 
-      <CommandPalette workspaceId={workspace.id} />
-      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      {searchOpen && (
+        <CommandPalette
+          workspaceId={workspace.id}
+          open
+          onOpenChange={setSearchOpen}
+        />
+      )}
+      {shortcutsOpen && (
+        <ShortcutsDialog open onOpenChange={setShortcutsOpen} />
+      )}
     </TooltipProvider>
   );
 }
@@ -545,7 +578,7 @@ function SidebarSection({
 /** A Notion-style teamspace: avatar row that expands into its page tree. */
 function TeamspaceItem({
   workspace,
-  nodes,
+  initialNodes,
   isCurrent,
   pathname,
   favoriteIds,
@@ -553,7 +586,7 @@ function TeamspaceItem({
   onCreatePage,
 }: {
   workspace: WorkspaceSummary;
-  nodes: DocumentTreeNode[];
+  initialNodes?: DocumentTreeNode[];
   isCurrent: boolean;
   pathname: string;
   favoriteIds: Set<string>;
@@ -562,7 +595,25 @@ function TeamspaceItem({
 }) {
   // The active teamspace starts expanded; the rest start collapsed.
   const [expanded, setExpanded] = useState(isCurrent);
+  const [loadedNodes, setLoadedNodes] = useState<
+    DocumentTreeNode[] | undefined
+  >();
+  const [loadingTree, startTreeLoad] = useTransition();
+  const nodes = initialNodes ?? loadedNodes;
   const canEdit = workspace.role !== "guest";
+
+  const toggleExpanded = () => {
+    const next = !expanded;
+    setExpanded(next);
+    if (!next || nodes !== undefined || loadingTree) return;
+    startTreeLoad(async () => {
+      const result = await actionListWorkspaceTree({
+        workspaceId: workspace.id,
+      });
+      if (result.ok) setLoadedNodes(result.data);
+      else toast.error(result.error);
+    });
+  };
 
   return (
     <li>
@@ -578,7 +629,7 @@ function TeamspaceItem({
           type="button"
           aria-label={expanded ? "Collapse teamspace" : "Expand teamspace"}
           aria-expanded={expanded}
-          onClick={() => setExpanded((prev) => !prev)}
+          onClick={toggleExpanded}
           className="relative flex h-6 w-6 shrink-0 items-center justify-center focus-visible:outline-none"
         >
           <span className="pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity group-hover/ts:opacity-0">
@@ -621,13 +672,17 @@ function TeamspaceItem({
 
       {expanded && (
         <div className="pl-3">
-          {nodes.length === 0 ? (
+          {loadingTree && nodes === undefined ? (
+            <p className="px-2 py-1 text-[var(--muted-foreground)]">
+              Loading pages…
+            </p>
+          ) : (nodes?.length ?? 0) === 0 ? (
             <p className="px-2 py-1 text-[var(--muted-foreground)]">
               No pages yet.
             </p>
           ) : (
             <DocumentTree
-              nodes={nodes}
+              nodes={nodes ?? []}
               workspaceId={workspace.id}
               activePath={pathname}
               favoriteIds={favoriteIds}

@@ -1,13 +1,12 @@
 import "server-only";
-import { del, put } from "@vercel/blob";
-import { nanoid } from "nanoid";
+import { del } from "@vercel/blob";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import { getDb, files } from "@/db";
 import { getServerEnv } from "@/env/server";
-import { requireMembership, canEditDocuments } from "@/lib/permissions";
+import { requireMembership } from "@/lib/permissions";
 import { logger } from "@/lib/logger";
 
-const ALLOWED_MIME_TYPES = new Set([
+export const ALLOWED_UPLOAD_MIME_TYPES = new Set([
   "image/jpeg",
   "image/png",
   "image/gif",
@@ -16,7 +15,7 @@ const ALLOWED_MIME_TYPES = new Set([
   "image/avif",
 ]);
 
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+export const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 
 export type UploadKind =
   | "avatar"
@@ -24,97 +23,6 @@ export type UploadKind =
   | "document-image"
   | "cover-image"
   | "attachment";
-
-export type UploadInput = {
-  file: File;
-  userId: string;
-  workspaceId: string;
-  documentId?: string;
-  kind: UploadKind;
-  /** Public only for assets on published public documents */
-  access?: "private" | "workspace" | "public";
-};
-
-function extensionFor(mime: string, filename: string): string {
-  const fromName = filename.split(".").pop()?.toLowerCase();
-  if (fromName && /^[a-z0-9]+$/.test(fromName) && fromName.length <= 8) {
-    return fromName;
-  }
-  const map: Record<string, string> = {
-    "image/jpeg": "jpg",
-    "image/png": "png",
-    "image/gif": "gif",
-    "image/webp": "webp",
-    "image/svg+xml": "svg",
-    "image/avif": "avif",
-  };
-  return map[mime] ?? "bin";
-}
-
-/**
- * Upload to Vercel Blob and persist metadata in Neon.
- * Pathnames are unique and non-guessable.
- */
-export async function uploadWorkspaceFile(input: UploadInput) {
-  const env = getServerEnv();
-  if (!env.BLOB_READ_WRITE_TOKEN) {
-    throw new Error("BLOB_READ_WRITE_TOKEN is not configured");
-  }
-
-  const membership = await requireMembership(
-    input.userId,
-    input.workspaceId,
-    "member",
-  );
-  if (!canEditDocuments(membership.role) && input.kind !== "avatar") {
-    throw new Error("FORBIDDEN");
-  }
-
-  if (!ALLOWED_MIME_TYPES.has(input.file.type)) {
-    throw new Error(`Unsupported file type: ${input.file.type}`);
-  }
-  if (input.file.size <= 0 || input.file.size > MAX_FILE_SIZE_BYTES) {
-    throw new Error(`File size must be between 1 byte and ${MAX_FILE_SIZE_BYTES} bytes`);
-  }
-
-  const access = input.access ?? "workspace";
-  const ext = extensionFor(input.file.type, input.file.name);
-  const pathname = `workspaces/${input.workspaceId}/${input.kind}/${nanoid(24)}.${ext}`;
-
-  const blob = await put(pathname, input.file, {
-    access: access === "public" ? "public" : "private",
-    token: env.BLOB_READ_WRITE_TOKEN,
-    contentType: input.file.type,
-    addRandomSuffix: false,
-  });
-
-  const db = getDb();
-  const id = nanoid();
-  const [record] = await db
-    .insert(files)
-    .values({
-      id,
-      workspaceId: input.workspaceId,
-      uploadedById: input.userId,
-      documentId: input.documentId,
-      blobUrl: blob.url,
-      blobPathname: blob.pathname,
-      originalFilename: input.file.name,
-      mimeType: input.file.type,
-      fileSize: input.file.size,
-      access,
-    })
-    .returning();
-
-  logger.info("blob.uploaded", {
-    fileId: id,
-    workspaceId: input.workspaceId,
-    kind: input.kind,
-    size: input.file.size,
-  });
-
-  return record;
-}
 
 /**
  * Soft-delete a file. Blob object is removed only when no other

@@ -37,10 +37,10 @@ function sanitize(fields?: LogFields): LogFields | undefined {
 
 function log(level: LogLevel, message: string, fields?: LogFields) {
   const payload = {
+    ...sanitize(fields),
     level,
     message,
     time: new Date().toISOString(),
-    ...sanitize(fields),
   };
 
   const line = JSON.stringify(payload);

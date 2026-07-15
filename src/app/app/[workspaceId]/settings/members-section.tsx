@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -53,7 +52,6 @@ export function MembersSection({
   members: Member[];
   invitations: Invitation[];
 }) {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "member" | "guest">("member");
   const [pending, startTransition] = useTransition();
@@ -70,7 +68,6 @@ export function MembersSection({
       if (result.ok) {
         toast.success(`Invitation sent to ${trimmed}`);
         setEmail("");
-        router.refresh();
       } else {
         toast.error(result.error);
       }
@@ -86,7 +83,6 @@ export function MembersSection({
       });
       if (result.ok) {
         toast.success("Role updated");
-        router.refresh();
       } else {
         toast.error(result.error);
       }
@@ -98,7 +94,6 @@ export function MembersSection({
       const result = await actionRemoveMember({ workspaceId, targetUserId });
       if (result.ok) {
         toast.success(`${name} removed from the workspace`);
-        router.refresh();
       } else {
         toast.error(result.error);
       }
@@ -113,7 +108,6 @@ export function MembersSection({
       });
       if (result.ok) {
         toast.success(`Invitation to ${invitationEmail} revoked`);
-        router.refresh();
       } else {
         toast.error(result.error);
       }
@@ -128,7 +122,6 @@ export function MembersSection({
       });
       if (result.ok) {
         toast.success(`Invitation re-sent to ${invitationEmail}`);
-        router.refresh();
       } else {
         toast.error(result.error);
       }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +16,6 @@ export function WorkspaceNameSection({
   name: string;
   canEdit: boolean;
 }) {
-  const router = useRouter();
   const [value, setValue] = useState(name);
   const [pending, startTransition] = useTransition();
 
@@ -33,7 +31,6 @@ export function WorkspaceNameSection({
       });
       if (result.ok) {
         toast.success("Workspace renamed");
-        router.refresh();
       } else {
         toast.error(result.error);
       }

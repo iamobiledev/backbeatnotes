@@ -3,8 +3,6 @@ import { pruneOldDocumentVersions } from "@/lib/workspaces/service";
 import { pruneSlackEvents } from "@/lib/slack/service";
 import { logger } from "@/lib/logger";
 
-export const runtime = "nodejs";
-
 /**
  * Protected Vercel Cron: prune old document versions and Slack event
  * idempotency keys.

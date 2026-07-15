@@ -151,10 +151,15 @@ export function BlockHandle({ editor }: BlockHandleProps) {
 
   const positionFor = useCallback((dom: HTMLElement) => {
     const rect = dom.getBoundingClientRect();
-    setCoords({
-      top: rect.top,
-      left: rect.left - HANDLE_WIDTH,
-    });
+    const next = {
+      top: Math.round(rect.top * 10) / 10,
+      left: Math.round((rect.left - HANDLE_WIDTH) * 10) / 10,
+    };
+    setCoords((previous) =>
+      previous.top === next.top && previous.left === next.left
+        ? previous
+        : next,
+    );
   }, []);
 
   const findTopLevelBlock = useCallback(
@@ -194,26 +199,34 @@ export function BlockHandle({ editor }: BlockHandleProps) {
   useEffect(() => {
     const view = editor.view;
     const dom = view.dom;
+    let hoverFrame: number | null = null;
+    let scrollFrame: number | null = null;
+    let pointer = { x: 0, y: 0 };
 
     const onMouseMove = (event: MouseEvent) => {
       if (draggingRef.current || menuOpenRef.current) return;
       if (handleRef.current?.contains(event.target as Node)) return;
 
-      const block = findTopLevelBlock(event.clientX, event.clientY);
-      if (!block) {
-        scheduleHide();
-        return;
-      }
+      pointer = { x: event.clientX, y: event.clientY };
+      if (hoverFrame !== null) return;
+      hoverFrame = requestAnimationFrame(() => {
+        hoverFrame = null;
+        const block = findTopLevelBlock(pointer.x, pointer.y);
+        if (!block) {
+          scheduleHide();
+          return;
+        }
 
-      cancelHide();
-      const prev = hoveredRef.current;
-      if (!prev || prev.pos !== block.pos || prev.dom !== block.dom) {
-        clearHoverHighlight();
-        block.dom.classList.add("is-block-hovered");
-        hoveredRef.current = block;
-      }
-      positionFor(block.dom);
-      setVisible(true);
+        cancelHide();
+        const prev = hoveredRef.current;
+        if (!prev || prev.pos !== block.pos || prev.dom !== block.dom) {
+          clearHoverHighlight();
+          block.dom.classList.add("is-block-hovered");
+          hoveredRef.current = block;
+          positionFor(block.dom);
+        }
+        setVisible(true);
+      });
     };
 
     const onMouseLeave = (event: MouseEvent) => {
@@ -224,8 +237,12 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     };
 
     const onScroll = () => {
-      const block = hoveredRef.current;
-      if (block) positionFor(block.dom);
+      if (scrollFrame !== null) return;
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = null;
+        const block = hoveredRef.current;
+        if (block) positionFor(block.dom);
+      });
     };
 
     dom.addEventListener("mousemove", onMouseMove);
@@ -235,6 +252,8 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       dom.removeEventListener("mousemove", onMouseMove);
       dom.removeEventListener("mouseleave", onMouseLeave);
       window.removeEventListener("scroll", onScroll, true);
+      if (hoverFrame !== null) cancelAnimationFrame(hoverFrame);
+      if (scrollFrame !== null) cancelAnimationFrame(scrollFrame);
       cancelHide();
       clearHoverHighlight();
     };

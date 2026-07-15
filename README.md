@@ -67,9 +67,12 @@ sudo -u postgres psql -d docloom -c "CREATE EXTENSION pg_trgm; CREATE EXTENSION 
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm test` | Vitest unit tests |
 | `pnpm test:e2e` | Playwright smoke tests |
+| `pnpm test:perf` | Playwright performance contracts (fixture URLs optional) |
+| `pnpm perf:audit` | Route TTFB and compressed asset transfer audit |
 | `pnpm check` | lint + typecheck + unit tests |
 | `pnpm db:generate` | Generate Drizzle migrations from schema |
 | `pnpm db:migrate` | **Intentional** migration runner (not on every deploy) |
+| `pnpm db:check` | Verify migrations, extensions, and workload indexes |
 | `pnpm db:seed` | Local development seed |
 | `pnpm db:studio` | Drizzle Studio |
 
@@ -240,6 +243,84 @@ PLAYWRIGHT_BASE_URL=https://your-preview.vercel.app pnpm test:e2e
 python3 scripts/slack-sim.py
 ```
 
+### Performance checks
+
+Run the route and asset audit against a local production server or deployment:
+
+```bash
+pnpm perf:audit -- --base http://localhost:3000 --routes /,/sign-in
+pnpm perf:audit -- --base https://preview.example.com \
+  --routes /,/sign-in,/p/example --out perf-results.json
+```
+
+Optional `--max-ttfb` and `--max-assets` flags turn measurements into failing
+budgets. For deterministic scale testing, seed a large workspace explicitly:
+
+```bash
+SEED_PERF_DOCUMENTS=500 pnpm db:seed
+```
+
+Set `E2E_PERF_WORKSPACE_URL`, `E2E_PERF_DOCUMENT_URL`, and
+`E2E_PUBLIC_DOCUMENT_URL` to exercise the database-backed performance
+contracts. Vercel Analytics and Speed Insights collect real-user route and
+Core Web Vitals data in deployed environments. Server operations slower than
+250 ms emit a structured `performance.slow_operation` warning; override that
+threshold with `SLOW_OPERATION_MS`.
+
+### Performance architecture
+
+- Next.js Cache Components provide partial prerendered shells while
+  request-bound authentication and workspace data stream behind local
+  Suspense boundaries.
+- Security headers are emitted by Next configuration, so static and auth pages
+  do not pay for a Proxy/Middleware invocation.
+- Better Auth, Drizzle, sessions, memberships, and common read helpers are
+  reused or request-memoized. Document access is resolved by one joined query.
+- The sidebar loads only the personal/current workspace initially, caps each
+  tree at 500 pages, and loads other teamspaces on expansion.
+- Published and read-only documents use a safe server renderer rather than
+  hydrating TipTap/ProseMirror. Published query results use tagged caches with
+  immediate invalidation on publish, edit, rename, restore, trash, or
+  unpublish.
+- Editor image bytes upload directly from the browser to Vercel Blob. The
+  server issues a narrowly scoped token and records trusted completion
+  metadata; it never buffers the file in a Function.
+- Search cancels superseded browser requests and uses Postgres FTS/trigram
+  operators that match the GIN indexes.
+
+Migration `0007_little_landau.sql` adds partial indexes for active,
+recent, and trashed page lists plus invitation and activity-coalescing indexes.
+Apply it before deploying this code. Index creation increases migration-time
+I/O but does not change data. A rollback can safely `DROP INDEX` the seven
+indexes declared in that migration; rolling forward is preferred.
+
+Document paragraph indexing is derived data: canonical page content and
+Postgres full-text fields save first, while optional embeddings run after the
+response. A missing `document_search_blocks` migration degrades paragraph
+anchors/semantic search but must never prevent creating or saving a page.
+Deployments should still treat degraded search as unready:
+
+```bash
+# Safe rollout order
+pnpm db:migrate
+pnpm db:check
+pnpm search:backfill
+curl --fail https://your-deployment.vercel.app/api/health
+```
+
+`db:check` exits non-zero when migrations 0006–0008, pgvector, the monotonic
+document revision column, or required indexes are missing. Revision tokens
+prevent concurrent whole-document saves from silently overwriting one another.
+`/api/health` returns 503 with secret-free schema readiness details when the
+database is unavailable or incomplete.
+During rollback, keep the newer schema in place; migrations are additive and
+older application versions safely ignore these tables/indexes.
+
+`VERCEL_REGION=iad1` and a Neon `aws-us-east-1` primary describe the same
+geography with provider-specific names. `/api/health` reports both
+`functionRegion` and `databaseRegion`; verify their geographic mapping rather
+than comparing the strings literally.
+
 ### Rolling back a deployment
 
 1. Vercel → Project → **Deployments**.
@@ -382,7 +463,8 @@ Replace with Typesense/Meilisearch later without changing the UI.
 - Route: `/p/[slug]` (stable public slug, not internal IDs)
 - Unauthenticated, read-only
 - Open Graph + SEO metadata
-- 404 when not public / missing
+- Not-found UI + `noindex` when not public / missing (a streamed PPR shell may
+  carry HTTP 200, per Next.js soft-404 semantics)
 - `revalidatePath` on publish/unpublish
 
 ### Cron (Vercel Cron)

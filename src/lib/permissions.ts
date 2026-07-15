@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { and, eq } from "drizzle-orm";
 import { getDb, workspaceMembers, type WorkspaceMember } from "@/db";
 import {
@@ -15,7 +16,7 @@ export { roleAtLeast, canEditDocuments, canManageWorkspace, canInvite };
 /**
  * Resolve membership from the database. Never trust client-supplied roles.
  */
-export async function getMembership(
+export const getMembership = cache(async function getMembership(
   userId: string,
   workspaceId: string,
 ): Promise<WorkspaceMember | null> {
@@ -31,7 +32,7 @@ export async function getMembership(
     )
     .limit(1);
   return row ?? null;
-}
+});
 
 export async function requireMembership(
   userId: string,

@@ -249,6 +249,11 @@ export const workspaceInvitations = pgTable(
     uniqueIndex("workspace_invitations_token_uidx").on(t.token),
     index("workspace_invitations_email_idx").on(t.email),
     index("workspace_invitations_expires_idx").on(t.expiresAt),
+    index("workspace_invitations_ws_status_created_idx").on(
+      t.workspaceId,
+      t.status,
+      t.createdAt,
+    ),
   ],
 );
 
@@ -300,12 +305,26 @@ export const documents = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    /** Monotonic optimistic-concurrency token for whole-document saves. */
+    revision: integer("revision").notNull().default(0),
     /** Weighted FTS vector — maintained via trigger / application update */
     searchVector: tsvector("search_vector"),
   },
   (t) => [
     index("documents_workspace_idx").on(t.workspaceId),
     index("documents_parent_idx").on(t.parentId),
+    index("documents_active_ws_title_idx")
+      .on(t.workspaceId, t.title)
+      .where(sql`${t.archivedAt} IS NULL`),
+    index("documents_active_ws_updated_idx")
+      .on(t.workspaceId, t.updatedAt)
+      .where(sql`${t.archivedAt} IS NULL`),
+    index("documents_active_parent_title_idx")
+      .on(t.workspaceId, t.parentId, t.title)
+      .where(sql`${t.archivedAt} IS NULL`),
+    index("documents_trash_ws_archived_idx")
+      .on(t.workspaceId, t.archivedAt)
+      .where(sql`${t.archivedAt} IS NOT NULL`),
     uniqueIndex("documents_public_slug_uidx").on(t.publicSlug),
     index("documents_updated_idx").on(t.updatedAt),
     index("documents_title_trgm_idx").using(
@@ -423,6 +442,12 @@ export const documentInvitations = pgTable(
     index("document_invitations_email_idx").on(t.email),
     index("document_invitations_doc_idx").on(t.documentId),
     index("document_invitations_expires_idx").on(t.expiresAt),
+    index("document_invitations_doc_status_expiry_idx").on(
+      t.documentId,
+      t.status,
+      t.expiresAt,
+      t.createdAt,
+    ),
   ],
 );
 
@@ -458,6 +483,12 @@ export const documentActivity = pgTable(
   (t) => [
     index("document_activity_doc_created_idx").on(t.documentId, t.updatedAt),
     index("document_activity_user_idx").on(t.userId),
+    index("document_activity_coalesce_idx").on(
+      t.documentId,
+      t.userId,
+      t.action,
+      t.updatedAt,
+    ),
   ],
 );
 

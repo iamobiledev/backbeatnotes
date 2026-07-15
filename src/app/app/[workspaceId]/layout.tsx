@@ -1,16 +1,31 @@
+import { Suspense } from "react";
 import { requireVerifiedSession, platformRoleOf } from "@/lib/session";
 import {
   listUserWorkspaces,
-  listWorkspaceDocumentTree,
-  listAllFavoriteDocuments,
-  listFavoriteDocumentIds,
+  listWorkspaceDocumentTrees,
+  listSidebarFavorites,
   listSharedWithMe,
 } from "@/lib/documents/service";
 import { AppShell } from "@/components/layout/app-shell";
+import { Skeleton } from "@/components/ui/skeleton";
 
-export const dynamic = "force-dynamic";
+export const unstable_instant = false;
 
-export default async function WorkspaceLayout({
+export default function WorkspaceLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: Promise<{ workspaceId: string }>;
+}) {
+  return (
+    <Suspense fallback={<WorkspaceShellLoading />}>
+      <WorkspaceChrome params={params}>{children}</WorkspaceChrome>
+    </Suspense>
+  );
+}
+
+async function WorkspaceChrome({
   children,
   params,
 }: {
@@ -40,15 +55,18 @@ export default async function WorkspaceLayout({
   }
 
   // Notion-style sidebar: trees for every workspace (Private + Teamspaces).
-  const [trees, favoriteDocs, favoriteIds, sharedDocs] = await Promise.all([
-    Promise.all(
-      workspaces.map(async (ws) => ({
-        workspaceId: ws.id,
-        nodes: await listWorkspaceDocumentTree(session.user.id, ws.id),
-      })),
+  const personalWorkspace = workspaces.find((item) => item.isPersonal);
+  const initialTreeWorkspaceIds = [
+    personalWorkspace?.id,
+    workspace.id,
+  ].filter((id, index, ids): id is string => Boolean(id) && ids.indexOf(id) === index);
+
+  const [trees, favorites, sharedDocs] = await Promise.all([
+    listWorkspaceDocumentTrees(
+      session.user.id,
+      initialTreeWorkspaceIds,
     ),
-    listAllFavoriteDocuments(session.user.id),
-    listFavoriteDocumentIds(session.user.id),
+    listSidebarFavorites(session.user.id),
     listSharedWithMe(session.user.id),
   ]);
 
@@ -69,12 +87,12 @@ export default async function WorkspaceLayout({
         role: w.role,
       }))}
       trees={trees}
-      favorites={favoriteDocs.map((f) => ({
+      favorites={favorites.documents.map((f) => ({
         id: f.id,
         title: f.title,
         workspaceId: f.workspaceId,
       }))}
-      favoriteIds={favoriteIds}
+      favoriteIds={favorites.ids}
       shared={sharedDocs.map((s) => ({
         id: s.id,
         title: s.title,
@@ -84,5 +102,31 @@ export default async function WorkspaceLayout({
     >
       {children}
     </AppShell>
+  );
+}
+
+function WorkspaceShellLoading() {
+  return (
+    <div
+      className="flex min-h-screen w-full"
+      aria-busy
+      aria-label="Loading workspace"
+    >
+      <aside className="hidden h-screen w-60 shrink-0 space-y-3 border-r border-[var(--border)] bg-[var(--sidebar)] p-3 md:block">
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-7 w-3/4" />
+        <Skeleton className="h-7 w-2/3" />
+        <Skeleton className="mt-6 h-4 w-20" />
+        {[...Array(6)].map((_, index) => (
+          <Skeleton key={index} className="h-6 w-full" />
+        ))}
+      </aside>
+      <div className="min-w-0 flex-1 p-8">
+        <Skeleton className="h-7 w-48" />
+        <Skeleton className="mt-8 h-12 w-2/3" />
+        <Skeleton className="mt-4 h-4 w-full" />
+        <Skeleton className="mt-3 h-4 w-5/6" />
+      </div>
+    </div>
   );
 }

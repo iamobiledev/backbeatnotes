@@ -6,8 +6,6 @@ import { openIdConnectToken, openIdConnectUserInfo } from "@/lib/slack/client";
 import { linkSlackUser } from "@/lib/slack/service";
 import { logger } from "@/lib/logger";
 
-export const runtime = "nodejs";
-
 function backToApp(workspaceId: string | undefined, status: string) {
   const url = workspaceId
     ? new URL(`/app/${workspaceId}/settings`, getAppUrl())

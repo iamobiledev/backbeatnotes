@@ -1,15 +1,16 @@
 import "server-only";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { after } from "next/server";
 import {
   getDb,
   documents,
   documentPermissions,
   documentInvitations,
+  workspaceMembers,
   workspaces,
   user,
 } from "@/db";
-import { getMembership } from "@/lib/permissions";
 import {
   computeDocumentAccess,
   canShare,
@@ -17,7 +18,7 @@ import {
   type DocumentAccess,
   type DocumentPermissionLevel,
 } from "./access";
-import { getDocumentWithAccess, getDirectPermission } from "./service";
+import { getDocumentWithAccess } from "./service";
 import { recordDocumentActivity } from "./activity";
 import {
   sendDocumentSharedEmail,
@@ -81,52 +82,51 @@ export async function listDocumentSharing(
   const { doc } = result;
 
   const db = getDb();
-  const [workspace] = await db
-    .select({ name: workspaces.name, isPersonal: workspaces.isPersonal })
-    .from(workspaces)
-    .where(eq(workspaces.id, doc.workspaceId))
-    .limit(1);
-
-  const [creator] = await db
-    .select({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      image: user.image,
-    })
-    .from(user)
-    .where(eq(user.id, doc.createdById))
-    .limit(1);
-
-  const grants = await db
-    .select({
-      userId: user.id,
-      name: user.name,
-      email: user.email,
-      image: user.image,
-      level: documentPermissions.level,
-      createdAt: documentPermissions.createdAt,
-    })
-    .from(documentPermissions)
-    .innerJoin(user, eq(user.id, documentPermissions.userId))
-    .where(eq(documentPermissions.documentId, doc.id))
-    .orderBy(documentPermissions.createdAt);
-
-  const pending = await db
-    .select({
-      invitationId: documentInvitations.id,
-      email: documentInvitations.email,
-      level: documentInvitations.level,
-    })
-    .from(documentInvitations)
-    .where(
-      and(
-        eq(documentInvitations.documentId, doc.id),
-        eq(documentInvitations.status, "pending"),
-        gt(documentInvitations.expiresAt, new Date()),
-      ),
-    )
-    .orderBy(documentInvitations.createdAt);
+  const [[workspace], [creator], grants, pending] = await Promise.all([
+    db
+      .select({ name: workspaces.name, isPersonal: workspaces.isPersonal })
+      .from(workspaces)
+      .where(eq(workspaces.id, doc.workspaceId))
+      .limit(1),
+    db
+      .select({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        image: user.image,
+      })
+      .from(user)
+      .where(eq(user.id, doc.createdById))
+      .limit(1),
+    db
+      .select({
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        image: user.image,
+        level: documentPermissions.level,
+        createdAt: documentPermissions.createdAt,
+      })
+      .from(documentPermissions)
+      .innerJoin(user, eq(user.id, documentPermissions.userId))
+      .where(eq(documentPermissions.documentId, doc.id))
+      .orderBy(documentPermissions.createdAt),
+    db
+      .select({
+        invitationId: documentInvitations.id,
+        email: documentInvitations.email,
+        level: documentInvitations.level,
+      })
+      .from(documentInvitations)
+      .where(
+        and(
+          eq(documentInvitations.documentId, doc.id),
+          eq(documentInvitations.status, "pending"),
+          gt(documentInvitations.expiresAt, new Date()),
+        ),
+      )
+      .orderBy(documentInvitations.createdAt),
+  ]);
 
   const people: SharePerson[] = [];
   if (creator) {
@@ -199,48 +199,113 @@ export async function shareDocument(opts: {
     .limit(1);
   const documentUrl = `${getAppUrl()}/app/${doc.workspaceId}/docs/${doc.id}`;
   const requestedRank = ACCESS_RANK[accessForLevel(opts.level)];
-
+  const emails = [
+    ...new Set(
+      opts.emails.map((email) => email.trim().toLowerCase()).filter(Boolean),
+    ),
+  ];
+  const targets =
+    emails.length > 0
+      ? await db
+          .select({ id: user.id, name: user.name, email: user.email })
+          .from(user)
+          .where(inArray(user.email, emails))
+      : [];
+  const targetByEmail = new Map(
+    targets.map((target) => [target.email.toLowerCase(), target]),
+  );
+  const targetIds = targets.map((target) => target.id);
+  const unknownEmails = emails.filter(
+    (email) =>
+      email !== sharer?.email.toLowerCase() && !targetByEmail.has(email),
+  );
+  const [memberships, permissions, pendingInvitations] = await Promise.all([
+    targetIds.length > 0
+      ? db
+          .select({
+            userId: workspaceMembers.userId,
+            role: workspaceMembers.role,
+          })
+          .from(workspaceMembers)
+          .where(
+            and(
+              eq(workspaceMembers.workspaceId, doc.workspaceId),
+              inArray(workspaceMembers.userId, targetIds),
+            ),
+          )
+      : Promise.resolve([]),
+    targetIds.length > 0
+      ? db
+          .select({
+            userId: documentPermissions.userId,
+            level: documentPermissions.level,
+          })
+          .from(documentPermissions)
+          .where(
+            and(
+              eq(documentPermissions.documentId, doc.id),
+              inArray(documentPermissions.userId, targetIds),
+            ),
+          )
+      : Promise.resolve([]),
+    unknownEmails.length > 0
+      ? db
+          .select({
+            id: documentInvitations.id,
+            email: documentInvitations.email,
+            token: documentInvitations.token,
+          })
+          .from(documentInvitations)
+          .where(
+            and(
+              eq(documentInvitations.documentId, doc.id),
+              eq(documentInvitations.status, "pending"),
+              inArray(documentInvitations.email, unknownEmails),
+            ),
+          )
+      : Promise.resolve([]),
+  ]);
+  const membershipByUser = new Map(
+    memberships.map((membership) => [membership.userId, membership.role]),
+  );
+  const permissionByUser = new Map(
+    permissions.map((permission) => [permission.userId, permission.level]),
+  );
+  const invitationByEmail = new Map(
+    pendingInvitations.map((invitation) => [
+      invitation.email.toLowerCase(),
+      invitation,
+    ]),
+  );
   const outcomes: Array<{ email: string; outcome: ShareOutcome }> = [];
   const sharedWith: string[] = [];
+  const permissionValues: Array<typeof documentPermissions.$inferInsert> = [];
+  const invitationValues: Array<typeof documentInvitations.$inferInsert> = [];
+  const invitationUpdates: Array<Promise<unknown>> = [];
+  const sharedEmails: Array<{ email: string; name: string }> = [];
+  const invitedEmails: Array<{ email: string; token: string }> = [];
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7);
 
-  for (const raw of opts.emails) {
-    const email = raw.trim().toLowerCase();
-    if (!email) continue;
+  for (const email of emails) {
 
     if (email === sharer?.email.toLowerCase()) {
       outcomes.push({ email, outcome: "self" });
       continue;
     }
 
-    const [target] = await db
-      .select({ id: user.id, name: user.name, email: user.email })
-      .from(user)
-      .where(eq(user.email, email))
-      .limit(1);
-
+    const target = targetByEmail.get(email);
     if (!target) {
-      // No account yet — pending invitation (converted on accept).
-      const [existing] = await db
-        .select({ id: documentInvitations.id })
-        .from(documentInvitations)
-        .where(
-          and(
-            eq(documentInvitations.documentId, doc.id),
-            eq(documentInvitations.email, email),
-            eq(documentInvitations.status, "pending"),
-          ),
-        )
-        .limit(1);
-
-      const token = nanoid(32);
-      const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7); // 7 days
+      const existing = invitationByEmail.get(email);
+      const token = existing?.token ?? nanoid(32);
       if (existing) {
-        await db
-          .update(documentInvitations)
-          .set({ level: opts.level, expiresAt, lastSentAt: new Date() })
-          .where(eq(documentInvitations.id, existing.id));
+        invitationUpdates.push(
+          db
+            .update(documentInvitations)
+            .set({ level: opts.level, expiresAt, lastSentAt: new Date() })
+            .where(eq(documentInvitations.id, existing.id)),
+        );
       } else {
-        await db.insert(documentInvitations).values({
+        invitationValues.push({
           id: nanoid(),
           documentId: doc.id,
           email,
@@ -251,47 +316,17 @@ export async function shareDocument(opts: {
           expiresAt,
         });
       }
-
-      // Email failures must not lose the invitation.
-      try {
-        const [row] = await db
-          .select({ token: documentInvitations.token })
-          .from(documentInvitations)
-          .where(
-            and(
-              eq(documentInvitations.documentId, doc.id),
-              eq(documentInvitations.email, email),
-              eq(documentInvitations.status, "pending"),
-            ),
-          )
-          .limit(1);
-        await sendDocumentInvitationEmail({
-          to: email,
-          sharerName: sharer?.name ?? "A teammate",
-          documentTitle: doc.title,
-          token: row?.token ?? token,
-        });
-      } catch (error) {
-        logger.error("document_share.invite_email_failed", {
-          documentId: doc.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+      invitedEmails.push({ email, token });
       outcomes.push({ email, outcome: "invited" });
       sharedWith.push(email);
       continue;
     }
 
-    // Existing user: skip when they already have equal-or-higher access.
-    const [membership, directPermission] = await Promise.all([
-      getMembership(target.id, doc.workspaceId),
-      getDirectPermission(target.id, doc.id),
-    ]);
     const currentAccess = computeDocumentAccess({
       visibility: doc.visibility,
       isCreator: doc.createdById === target.id,
-      membershipRole: membership?.role ?? null,
-      directPermission,
+      membershipRole: membershipByUser.get(target.id) ?? null,
+      directPermission: permissionByUser.get(target.id) ?? null,
       archived: false,
       docType: doc.docType,
       locked: doc.lockedAt !== null,
@@ -301,38 +336,33 @@ export async function shareDocument(opts: {
       continue;
     }
 
-    await db
-      .insert(documentPermissions)
-      .values({
-        id: nanoid(),
-        documentId: doc.id,
-        userId: target.id,
-        level: opts.level,
-        invitedById: opts.userId,
-      })
-      .onConflictDoUpdate({
-        target: [documentPermissions.documentId, documentPermissions.userId],
-        set: { level: opts.level, updatedAt: new Date() },
-      });
-
-    try {
-      await sendDocumentSharedEmail({
-        to: target.email,
-        recipientName: target.name,
-        sharerName: sharer?.name ?? "A teammate",
-        documentTitle: doc.title,
-        level: opts.level,
-        documentUrl,
-      });
-    } catch (error) {
-      logger.error("document_share.email_failed", {
-        documentId: doc.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+    permissionValues.push({
+      id: nanoid(),
+      documentId: doc.id,
+      userId: target.id,
+      level: opts.level,
+      invitedById: opts.userId,
+    });
+    sharedEmails.push({ email: target.email, name: target.name });
     outcomes.push({ email, outcome: "shared" });
     sharedWith.push(email);
   }
+
+  await Promise.all([
+    permissionValues.length > 0
+      ? db
+          .insert(documentPermissions)
+          .values(permissionValues)
+          .onConflictDoUpdate({
+        target: [documentPermissions.documentId, documentPermissions.userId],
+        set: { level: opts.level, updatedAt: new Date() },
+          })
+      : Promise.resolve(),
+    invitationValues.length > 0
+      ? db.insert(documentInvitations).values(invitationValues)
+      : Promise.resolve(),
+    ...invitationUpdates,
+  ]);
 
   if (sharedWith.length > 0) {
     await recordDocumentActivity({
@@ -345,6 +375,43 @@ export async function shareDocument(opts: {
       documentId: doc.id,
       count: sharedWith.length,
       level: opts.level,
+    });
+
+    after(async () => {
+      await Promise.allSettled([
+        ...sharedEmails.map(async (target) => {
+          try {
+            await sendDocumentSharedEmail({
+              to: target.email,
+              recipientName: target.name,
+              sharerName: sharer?.name ?? "A teammate",
+              documentTitle: doc.title,
+              level: opts.level,
+              documentUrl,
+            });
+          } catch (error) {
+            logger.error("document_share.email_failed", {
+              documentId: doc.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }),
+        ...invitedEmails.map(async (invitation) => {
+          try {
+            await sendDocumentInvitationEmail({
+              to: invitation.email,
+              sharerName: sharer?.name ?? "A teammate",
+              documentTitle: doc.title,
+              token: invitation.token,
+            });
+          } catch (error) {
+            logger.error("document_share.invite_email_failed", {
+              documentId: doc.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }),
+      ]);
     });
   }
 

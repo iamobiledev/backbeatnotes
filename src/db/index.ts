@@ -17,14 +17,12 @@ export type { Database };
 const globalForDb = globalThis as unknown as { __docloomDb?: Database };
 
 /**
- * Reuse the client across hot reloads in development.
- * On Vercel each invocation may get a fresh module scope; neon HTTP
- * does not hold persistent sockets, so this is safe.
+ * Reuse the Drizzle/Neon factory for the lifetime of a warm runtime and
+ * across development hot reloads. Neon HTTP holds no persistent socket, so a
+ * shared query client is safe and avoids rebuilding schema/query machinery on
+ * every helper call.
  */
 export function getDb(): Database {
-  if (process.env.NODE_ENV === "production") {
-    return createDb();
-  }
   if (!globalForDb.__docloomDb) {
     globalForDb.__docloomDb = createDb();
   }

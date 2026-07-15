@@ -49,68 +49,79 @@ export async function notifyDocumentEdited(opts: {
     participantIds.delete(opts.actorId);
     if (participantIds.size === 0) return;
 
-    const recipients = await db
-      .select({
-        id: userTable.id,
-        name: userTable.name,
-        email: userTable.email,
-        emailNotifications: userTable.emailNotifications,
-        emailVerified: userTable.emailVerified,
-      })
-      .from(userTable)
-      .where(inArray(userTable.id, [...participantIds]));
-
-    const [workspace] = await db
-      .select({ name: workspaces.name, isPersonal: workspaces.isPersonal })
-      .from(workspaces)
-      .where(eq(workspaces.id, opts.doc.workspaceId))
-      .limit(1);
+    const [recipients, [workspace]] = await Promise.all([
+      db
+        .select({
+          id: userTable.id,
+          name: userTable.name,
+          email: userTable.email,
+          emailNotifications: userTable.emailNotifications,
+          emailVerified: userTable.emailVerified,
+        })
+        .from(userTable)
+        .where(inArray(userTable.id, [...participantIds])),
+      db
+        .select({ name: workspaces.name, isPersonal: workspaces.isPersonal })
+        .from(workspaces)
+        .where(eq(workspaces.id, opts.doc.workspaceId))
+        .limit(1),
+    ]);
     // Personal notebooks have no other participants worth emailing.
     if (!workspace || workspace.isPersonal) return;
 
     const documentUrl = `${getAppUrl()}/app/${opts.doc.workspaceId}/docs/${opts.doc.id}`;
     const windowStart = new Date(Date.now() - DOC_ACTIVITY_THROTTLE_MS);
-
-    for (const recipient of recipients) {
-      if (!recipient.emailNotifications || !recipient.emailVerified) continue;
-
-      // Throttle: skip when this recipient already got an email for this
-      // document within the window.
-      const [recent] = await db
-        .select({ id: notificationLog.id })
-        .from(notificationLog)
-        .where(
-          and(
-            eq(notificationLog.recipientId, recipient.id),
-            eq(notificationLog.documentId, opts.doc.id),
-            eq(notificationLog.type, DOC_ACTIVITY_TYPE),
-            gt(notificationLog.sentAt, windowStart),
+    const eligible = recipients.filter(
+      (recipient) =>
+        recipient.emailNotifications && recipient.emailVerified,
+    );
+    if (eligible.length === 0) return;
+    const recent = await db
+      .select({ recipientId: notificationLog.recipientId })
+      .from(notificationLog)
+      .where(
+        and(
+          inArray(
+            notificationLog.recipientId,
+            eligible.map((recipient) => recipient.id),
           ),
-        )
-        .limit(1);
-      if (recent) continue;
+          eq(notificationLog.documentId, opts.doc.id),
+          eq(notificationLog.type, DOC_ACTIVITY_TYPE),
+          gt(notificationLog.sentAt, windowStart),
+        ),
+      );
+    const recentlyNotified = new Set(recent.map((row) => row.recipientId));
+    const pending = eligible.filter(
+      (recipient) => !recentlyNotified.has(recipient.id),
+    );
+    if (pending.length === 0) return;
 
-      // Record first (acts as the throttle claim), then send.
-      await db.insert(notificationLog).values({
+    // Claim the full batch before sending, then let independent provider calls
+    // run concurrently so one slow recipient does not serialize the fan-out.
+    await db.insert(notificationLog).values(
+      pending.map((recipient) => ({
         id: nanoid(),
         recipientId: recipient.id,
         documentId: opts.doc.id,
         type: DOC_ACTIVITY_TYPE,
-      });
-
-      await sendDocumentActivityEmail({
-        to: recipient.email,
-        recipientName: recipient.name,
-        actorName: opts.actorName,
-        documentTitle: opts.doc.title,
-        workspaceName: workspace.name,
-        documentUrl,
-      });
-      logger.info("notify.doc_activity_sent", {
-        documentId: opts.doc.id,
-        recipientId: recipient.id,
-      });
-    }
+      })),
+    );
+    await Promise.allSettled(
+      pending.map(async (recipient) => {
+        await sendDocumentActivityEmail({
+          to: recipient.email,
+          recipientName: recipient.name,
+          actorName: opts.actorName,
+          documentTitle: opts.doc.title,
+          workspaceName: workspace.name,
+          documentUrl,
+        });
+        logger.info("notify.doc_activity_sent", {
+          documentId: opts.doc.id,
+          recipientId: recipient.id,
+        });
+      }),
+    );
   } catch (error) {
     logger.error("notify.doc_activity_failed", {
       documentId: opts.doc.id,

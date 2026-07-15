@@ -10,8 +10,6 @@ import {
 } from "@/lib/slack/events";
 import { logger } from "@/lib/logger";
 
-export const runtime = "nodejs";
-
 /**
  * Slack Events API endpoint.
  *

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Check, ChevronDown, Lock, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -63,7 +62,6 @@ export function ShareTab({
   onChanged: () => Promise<void>;
   slack: { configured: boolean; connected: boolean; teamName: string | null };
 }) {
-  const router = useRouter();
   const [inviteInput, setInviteInput] = useState("");
   const [inviteLevel, setInviteLevel] =
     useState<DocumentPermissionLevel>("full_access");
@@ -111,7 +109,6 @@ export function ShareTab({
       }
       setInviteInput("");
       await onChanged();
-      router.refresh();
     });
   };
 
@@ -267,7 +264,6 @@ function PersonRow({
   canManage: boolean;
   onChanged: () => Promise<void>;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   const setLevel = (level: DocumentPermissionLevel) => {
@@ -280,7 +276,6 @@ function PersonRow({
       });
       if (!result.ok) toast.error(result.error);
       await onChanged();
-      router.refresh();
     });
   };
 
@@ -293,7 +288,6 @@ function PersonRow({
       if (result.ok) toast.success(`Removed ${person.name}'s access`);
       else toast.error(result.error);
       await onChanged();
-      router.refresh();
     });
   };
 
@@ -434,7 +428,6 @@ function GeneralAccessRow({
   canManage: boolean;
   onChanged: () => Promise<void>;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   const setAccess = (access: GeneralAccess) => {
@@ -451,7 +444,6 @@ function GeneralAccessRow({
         toast.error(result.error);
       }
       await onChanged();
-      router.refresh();
     });
   };
 

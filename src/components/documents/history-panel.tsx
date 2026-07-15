@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { History, Loader2 } from "lucide-react";
@@ -118,7 +117,6 @@ export function HistoryPanel({
   documentId: string;
   canEdit: boolean;
 }) {
-  const router = useRouter();
   const [tab, setTab] = useState<"activity" | "versions">("activity");
   const [activity, setActivity] = useState<ActivityEntry[] | null>(null);
   const [versions, setVersions] = useState<VersionSummary[] | null>(null);
@@ -181,7 +179,6 @@ export function HistoryPanel({
       if (result.ok) {
         toast.success(`Restored version ${selected.version}`);
         handleOpenChange(false);
-        router.refresh();
       } else {
         toast.error(result.error);
       }

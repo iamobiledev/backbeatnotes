@@ -7,10 +7,6 @@ import {
 import { brand } from "@/config/brand";
 import { PublicDocumentView } from "./public-view";
 
-/** Always render on demand so publish/unpublish invalidation is prompt. */
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 export async function generateMetadata({
   params,
 }: {

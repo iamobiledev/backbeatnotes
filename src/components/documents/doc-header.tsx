@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -29,7 +30,10 @@ import {
   actionSetDocumentLock,
 } from "@/app/actions";
 import { SharePopover } from "@/components/share/share-popover";
-import { HistoryPanel } from "./history-panel";
+
+const HistoryPanel = dynamic(() =>
+  import("./history-panel").then((module) => module.HistoryPanel),
+);
 
 export type DocHeaderProps = {
   doc: {
@@ -88,7 +92,6 @@ export function DocHeader({
             ? "Wiki locked — only admins can edit"
             : "Wiki unlocked — editors can edit again",
         );
-        router.refresh();
       } else {
         toast.error(result.error);
       }
@@ -122,7 +125,6 @@ export function DocHeader({
           },
         });
         router.push(`/app/${doc.workspaceId}`);
-        router.refresh();
       } else {
         toast.error(result.error);
       }
@@ -263,12 +265,14 @@ export function DocHeader({
         </DropdownMenu>
       </div>
 
-      <HistoryPanel
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
-        documentId={doc.id}
-        canEdit={canEdit}
-      />
+      {historyOpen && (
+        <HistoryPanel
+          open
+          onOpenChange={setHistoryOpen}
+          documentId={doc.id}
+          canEdit={canEdit}
+        />
+      )}
     </div>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Check, Copy, ExternalLink, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,6 @@ export function PublishTab({
 }: {
   doc: { id: string; title: string; published: boolean; publicSlug: string | null };
 }) {
-  const router = useRouter();
   const [published, setPublished] = useState(doc.published);
   const [publicSlug, setPublicSlug] = useState(doc.publicSlug);
   const [pending, startTransition] = useTransition();
@@ -41,7 +39,6 @@ export function PublishTab({
             ? "Published — anyone with the link can view"
             : "Unpublished — the public link no longer works",
         );
-        router.refresh();
       } else {
         toast.error(result.error);
       }

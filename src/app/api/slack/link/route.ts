@@ -4,8 +4,6 @@ import { getServerEnv, getAppUrl } from "@/env/server";
 import { isSlackConfigured } from "@/lib/slack/status";
 import { createStateToken } from "@/lib/slack/state";
 
-export const runtime = "nodejs";
-
 /**
  * Starts the Sign-in-with-Slack (OIDC) flow to link the current user's
  * Slack identity to their Docloom account.

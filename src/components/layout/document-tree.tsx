@@ -138,7 +138,13 @@ function TreeItem({
   const isActive = node.id === activeDocId;
   const isExpanded = expanded.has(node.id);
   const hasChildren = node.children.length > 0;
-  const isFavorited = favoriteIds?.has(node.id) ?? false;
+  const [titleOverride, setTitleOverride] = useState<string | null>(null);
+  const [favoriteOverride, setFavoriteOverride] = useState<boolean | null>(
+    null,
+  );
+  const displayTitle = titleOverride ?? node.title;
+  const isFavorited =
+    favoriteOverride ?? favoriteIds?.has(node.id) ?? false;
   const docUrl = `/app/${workspaceId}/docs/${node.id}`;
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -151,23 +157,25 @@ function TreeItem({
     renameCommittedRef.current = true;
     setRenaming(false);
     const title = value.trim();
-    if (!title || title === node.title) return;
+    if (!title || title === displayTitle) return;
+    const previousTitle = displayTitle;
+    setTitleOverride(title);
     startTransition(async () => {
       const result = await actionRenameDocument({ documentId: node.id, title });
-      if (result.ok) {
-        router.refresh();
-      } else {
+      if (!result.ok) {
+        setTitleOverride(previousTitle);
         toast.error(result.error);
       }
     });
   };
 
   const toggleFavorite = () => {
+    const previous = isFavorited;
+    setFavoriteOverride(!previous);
     startTransition(async () => {
       const result = await actionToggleFavorite({ documentId: node.id });
-      if (result.ok) {
-        router.refresh();
-      } else {
+      if (!result.ok) {
+        setFavoriteOverride(previous);
         toast.error(result.error);
       }
     });
@@ -183,7 +191,6 @@ function TreeItem({
       const result = await actionDuplicateDocument({ documentId: node.id });
       if (result.ok) {
         toast.success("Page duplicated");
-        router.refresh();
       } else {
         toast.error(result.error);
       }
@@ -196,7 +203,6 @@ function TreeItem({
       if (result.ok) {
         toast.success("Moved to trash");
         if (isActive) router.push(`/app/${workspaceId}`);
-        router.refresh();
       } else {
         toast.error(result.error);
       }
@@ -254,7 +260,7 @@ function TreeItem({
         {renaming ? (
           <input
             autoFocus
-            defaultValue={node.title}
+            defaultValue={displayTitle}
             aria-label="Rename page"
             onFocus={(event) => event.target.select()}
             onKeyDown={(event) => {
@@ -278,7 +284,7 @@ function TreeItem({
                 : "text-[var(--muted-foreground)]"
             }`}
           >
-            <span className="truncate">{node.title || "Untitled"}</span>
+            <span className="truncate">{displayTitle || "Untitled"}</span>
             {node.locked && (
               <Lock
                 aria-label="Locked"
@@ -296,7 +302,7 @@ function TreeItem({
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  aria-label={`Page options for ${node.title || "Untitled"}`}
+                  aria-label={`Page options for ${displayTitle || "Untitled"}`}
                   title="Delete, duplicate, and more…"
                   className="flex h-5 w-5 items-center justify-center rounded text-[var(--muted-foreground)] hover:bg-[var(--hover-strong)] focus-visible:outline-none"
                 >
@@ -345,7 +351,7 @@ function TreeItem({
             {onCreateChild && (
               <button
                 type="button"
-                aria-label={`Add page inside ${node.title || "Untitled"}`}
+                aria-label={`Add page inside ${displayTitle || "Untitled"}`}
                 title="Add a page inside"
                 onClick={() => onCreateChild(node.id)}
                 className="flex h-5 w-5 items-center justify-center rounded text-[var(--muted-foreground)] hover:bg-[var(--hover-strong)] focus-visible:outline-none"

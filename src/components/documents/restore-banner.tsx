@@ -2,7 +2,6 @@
 
 import { useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeft, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,7 +14,6 @@ export function RestoreBanner({
   documentId: string;
   workspaceId: string;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   const restore = () => {
@@ -23,7 +21,6 @@ export function RestoreBanner({
       const result = await actionRestoreDocument({ documentId });
       if (result.ok) {
         toast.success("Page restored");
-        router.refresh();
       } else {
         toast.error(result.error);
       }

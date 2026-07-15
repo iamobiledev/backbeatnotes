@@ -60,7 +60,6 @@ export function SlackSection({
       const result = await actionDisconnectSlack({ workspaceId });
       if (result.ok) {
         toast.success("Slack disconnected");
-        router.refresh();
       } else {
         toast.error(result.error);
       }
@@ -72,7 +71,6 @@ export function SlackSection({
       const result = await actionUnlinkSlackIdentity({ workspaceId });
       if (result.ok) {
         toast.success("Slack account unlinked");
-        router.refresh();
       } else {
         toast.error(result.error);
       }

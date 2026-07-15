@@ -2,7 +2,6 @@
 
 import { useTransition, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { FileText, RotateCcw, Trash2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -25,11 +24,12 @@ export function TrashList({
   items: TrashItem[];
   canRestore: boolean;
 }) {
-  const router = useRouter();
+  const [restoredIds, setRestoredIds] = useState<Set<string>>(() => new Set());
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+  const visibleItems = items.filter((item) => !restoredIds.has(item.id));
 
-  if (items.length === 0) {
+  if (visibleItems.length === 0) {
     return (
       <div className="mt-12 flex flex-col items-center rounded-lg border border-dashed border-[var(--border)] py-16 text-center">
         <Trash2 className="h-8 w-8 text-[var(--muted-foreground)]" />
@@ -48,8 +48,8 @@ export function TrashList({
       const result = await actionRestoreDocument({ documentId: id });
       setRestoringId(null);
       if (result.ok) {
+        setRestoredIds((current) => new Set(current).add(id));
         toast.success("Page restored");
-        router.refresh();
       } else {
         toast.error(result.error);
       }
@@ -58,7 +58,7 @@ export function TrashList({
 
   return (
     <ul className="mt-6 divide-y divide-[var(--border)] rounded-lg border border-[var(--border)] bg-[var(--card)]">
-      {items.map((item) => (
+      {visibleItems.map((item) => (
         <li key={item.id} className="flex items-center gap-3 px-4 py-3">
           {item.icon ? (
             <span className="text-base leading-none">{item.icon}</span>

@@ -33,9 +33,18 @@ const DATE_FILTERS = [
  * Global Cmd/Ctrl+K search palette with owner/date filters, highlighted
  * snippets, and keyboard navigation.
  */
-export function CommandPalette({ workspaceId }: { workspaceId?: string }) {
+export function CommandPalette({
+  workspaceId,
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  workspaceId?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [loading, setLoading] = useState(false);
@@ -51,35 +60,24 @@ export function CommandPalette({ workspaceId }: { workspaceId?: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const requestSeq = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const handleOpenChange = useCallback((next: boolean) => {
-    setOpen(next);
-    if (!next) {
-      setQuery("");
-      setHits([]);
-      setSearched(false);
-      setError(null);
-      setSelectedIndex(0);
-    }
-  }, []);
-
-  // Open on Cmd/Ctrl+K or the custom event fired by the sidebar button.
-  // (Escape/overlay close through Radix, which resets via handleOpenChange.)
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setOpen(true);
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      setInternalOpen(next);
+      onOpenChange?.(next);
+      if (!next) {
+        abortRef.current?.abort();
+        abortRef.current = null;
+        setQuery("");
+        setHits([]);
+        setSearched(false);
+        setError(null);
+        setSelectedIndex(0);
       }
-    };
-    const onOpen = () => setOpen(true);
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("docloom:open-search", onOpen);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("docloom:open-search", onOpen);
-    };
-  }, []);
+    },
+    [onOpenChange],
+  );
 
   // Load workspace members once for the owner filter.
   useEffect(() => {
@@ -95,13 +93,19 @@ export function CommandPalette({ workspaceId }: { workspaceId?: string }) {
 
   const runSearch = useCallback(async () => {
     const q = query.trim();
-    if (!q) {
+    if (q.length < 2) {
+      abortRef.current?.abort();
+      abortRef.current = null;
       setHits([]);
       setSearched(false);
       setError(null);
+      setLoading(false);
       return;
     }
     const seq = ++requestSeq.current;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
     setError(null);
     try {
@@ -114,7 +118,9 @@ export function CommandPalette({ workspaceId }: { workspaceId?: string }) {
         const after = new Date(Date.now() - Number(days) * 86_400_000);
         params.set("updatedAfter", after.toISOString());
       }
-      const res = await fetch(`/api/search?${params.toString()}`);
+      const res = await fetch(`/api/search?${params.toString()}`, {
+        signal: controller.signal,
+      });
       if (seq !== requestSeq.current) return;
       if (!res.ok) {
         setError(
@@ -130,12 +136,21 @@ export function CommandPalette({ workspaceId }: { workspaceId?: string }) {
       setHits(data.hits);
       setSearched(true);
       setSelectedIndex(0);
-    } catch {
+    } catch (searchError) {
+      if (
+        searchError instanceof DOMException &&
+        searchError.name === "AbortError"
+      ) {
+        return;
+      }
       if (seq === requestSeq.current) {
         setError("Search is unavailable right now.");
       }
     } finally {
-      if (seq === requestSeq.current) setLoading(false);
+      if (seq === requestSeq.current) {
+        setLoading(false);
+        if (abortRef.current === controller) abortRef.current = null;
+      }
     }
   }, [query, scope, workspaceId, ownerId, days]);
 
@@ -143,6 +158,13 @@ export function CommandPalette({ workspaceId }: { workspaceId?: string }) {
     const handle = setTimeout(() => void runSearch(), 200);
     return () => clearTimeout(handle);
   }, [runSearch]);
+
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+    },
+    [],
+  );
 
   const openHit = useCallback(
     (hit: SearchHit) => {

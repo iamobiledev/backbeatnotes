@@ -1,7 +1,23 @@
 import "server-only";
-import { and, asc, desc, eq, isNull, isNotNull, inArray, sql } from "drizzle-orm";
+import { cache } from "react";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  sql,
+} from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { revalidatePath } from "next/cache";
+import {
+  cacheLife,
+  cacheTag,
+  revalidatePath,
+  revalidateTag,
+} from "next/cache";
 import { after } from "next/server";
 import {
   getDb,
@@ -16,7 +32,11 @@ import {
   type Document,
   type Database,
 } from "@/db";
-import { requireMembership, getMembership } from "@/lib/permissions";
+import {
+  requireMembership,
+  roleAtLeast,
+  type WorkspaceRole,
+} from "@/lib/permissions";
 import {
   computeDocumentAccess,
   canManageWikiLock,
@@ -32,14 +52,49 @@ import { extractPlainText } from "./plain-text";
 import { normalizeDocumentBlocks } from "./blocks";
 import { slugify } from "@/lib/utils";
 import { logger } from "@/lib/logger";
-import { syncDocumentSearchBlocks } from "@/lib/search/document-blocks";
+import { measureServerOperation } from "@/lib/performance";
 
-function refreshDocumentEmbeddingsAfterResponse(documentId: string) {
+const PUBLIC_DOCUMENTS_TAG = "public-documents";
+
+function publicDocumentTag(slug: string) {
+  return `public-document:${slug}`;
+}
+
+function invalidatePublicDocument(slug: string | null | undefined) {
+  if (slug) revalidateTag(publicDocumentTag(slug), { expire: 0 });
+}
+
+async function syncDocumentSearchAfterWrite(doc: {
+  id: string;
+  title: string;
+  contentJson: Record<string, unknown>;
+  revision: number;
+}) {
+  const { syncDocumentSearchIndexBestEffort } = await import(
+    "@/lib/search/document-blocks"
+  );
+  const result = await syncDocumentSearchIndexBestEffort({
+    documentId: doc.id,
+    expectedRevision: doc.revision,
+    title: doc.title,
+    contentJson: doc.contentJson,
+  });
+  if (result.status !== "synced") return;
+
+  // Only external AI work is deferred. The relational paragraph index is
+  // already consistent (or explicitly degraded) when the mutation returns.
   after(async () => {
-    const { refreshDocumentBlockEmbeddings } = await import(
-      "@/lib/search/document-blocks"
-    );
-    await refreshDocumentBlockEmbeddings(documentId);
+    try {
+      const { refreshDocumentBlockEmbeddings } = await import(
+        "@/lib/search/document-blocks"
+      );
+      await refreshDocumentBlockEmbeddings(doc.id);
+    } catch (error) {
+      logger.error("search.document_embeddings_refresh_failed", {
+        documentId: doc.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   });
 }
 
@@ -52,17 +107,9 @@ export type DocumentWithAccess = {
   access: DocumentAccess;
   /** Requesting user's platform role (admin | developer). */
   platformRole: PlatformRole;
+  /** Membership resolved by the same access query (null for direct shares). */
+  membershipRole: WorkspaceRole | null;
 };
-
-async function getPlatformRole(userId: string): Promise<PlatformRole> {
-  const db = getDb();
-  const [row] = await db
-    .select({ role: user.role })
-    .from(user)
-    .where(eq(user.id, userId))
-    .limit(1);
-  return row?.role === "admin" ? "admin" : "developer";
-}
 
 /** The user's direct share level on a document, if any. */
 export async function getDirectPermission(
@@ -88,35 +135,63 @@ export async function getDirectPermission(
  * Returns null when the document does not exist. Callers decide how to
  * render `access === "none"` (e.g. the request-access screen).
  */
-export async function getDocumentWithAccess(
+export const getDocumentWithAccess = cache(async function getDocumentWithAccess(
   userId: string,
   documentId: string,
 ): Promise<DocumentWithAccess | null> {
   const db = getDb();
-  const [doc] = await db
-    .select()
-    .from(documents)
-    .where(eq(documents.id, documentId))
-    .limit(1);
-  if (!doc) return null;
+  const [row] = await measureServerOperation(
+    "document.access",
+    () =>
+      db
+        .select({
+          doc: documents,
+          membershipRole: workspaceMembers.role,
+          platformRole: user.role,
+          directPermission: documentPermissions.level,
+        })
+        .from(documents)
+        .leftJoin(
+          workspaceMembers,
+          and(
+            eq(workspaceMembers.workspaceId, documents.workspaceId),
+            eq(workspaceMembers.userId, userId),
+          ),
+        )
+        .leftJoin(
+          documentPermissions,
+          and(
+            eq(documentPermissions.documentId, documents.id),
+            eq(documentPermissions.userId, userId),
+          ),
+        )
+        .leftJoin(user, eq(user.id, userId))
+        .where(eq(documents.id, documentId))
+        .limit(1),
+    { documentId },
+  );
+  if (!row) return null;
 
-  const [membership, platformRole, directPermission] = await Promise.all([
-    getMembership(userId, doc.workspaceId),
-    getPlatformRole(userId),
-    getDirectPermission(userId, doc.id),
-  ]);
+  const { doc } = row;
+  const platformRole: PlatformRole =
+    row.platformRole === "admin" ? "admin" : "developer";
   const access = computeDocumentAccess({
     visibility: doc.visibility,
     isCreator: doc.createdById === userId,
-    membershipRole: membership?.role ?? null,
-    directPermission,
+    membershipRole: row.membershipRole,
+    directPermission: row.directPermission,
     archived: doc.archivedAt !== null,
     docType: doc.docType,
     locked: doc.lockedAt !== null,
     platformRole,
   });
-  return { doc, access, platformRole };
-}
+  return {
+    doc,
+    access,
+    platformRole,
+    membershipRole: row.membershipRole,
+  };
+});
 
 /** Like getDocumentWithAccess but throws unless the user can view. */
 export async function getDocumentForUser(
@@ -159,6 +234,10 @@ function visibleTo(userId: string) {
 /* Listing                                                                     */
 /* -------------------------------------------------------------------------- */
 
+export const MAX_WORKSPACE_DOCUMENTS = 500;
+const MAX_SIDEBAR_FAVORITES = 100;
+const MAX_TRASH_DOCUMENTS = 200;
+
 export type { DocumentTreeNode } from "./types";
 import type { DocumentTreeNode } from "./types";
 
@@ -190,7 +269,8 @@ export async function listWorkspaceDocuments(
         visibleTo(userId),
       ),
     )
-    .orderBy(asc(documents.title));
+    .orderBy(asc(documents.title))
+    .limit(MAX_WORKSPACE_DOCUMENTS);
 }
 
 /** Flat list assembled into a tree for the sidebar. */
@@ -226,6 +306,86 @@ export async function listWorkspaceDocumentTree(
   };
   sortRec(roots);
   return roots;
+}
+
+/**
+ * Load every authorized workspace tree in one SQL request. The workspace IDs
+ * come from the caller's workspace summary, but the membership join keeps this
+ * helper safe if it is reused with untrusted IDs.
+ */
+export async function listWorkspaceDocumentTrees(
+  userId: string,
+  workspaceIds: string[],
+): Promise<Array<{ workspaceId: string; nodes: DocumentTreeNode[] }>> {
+  if (workspaceIds.length === 0) return [];
+  const db = getDb();
+  const rows = await measureServerOperation(
+    "sidebar.document_trees",
+    () =>
+      db
+        .select({
+          workspaceId: documents.workspaceId,
+          id: documents.id,
+          title: documents.title,
+          parentId: documents.parentId,
+          visibility: documents.visibility,
+          icon: documents.icon,
+          docType: documents.docType,
+          lockedAt: documents.lockedAt,
+          updatedAt: documents.updatedAt,
+          createdById: documents.createdById,
+        })
+        .from(documents)
+        .innerJoin(
+          workspaceMembers,
+          and(
+            eq(workspaceMembers.workspaceId, documents.workspaceId),
+            eq(workspaceMembers.userId, userId),
+          ),
+        )
+        .where(
+          and(
+            inArray(documents.workspaceId, workspaceIds),
+            isNull(documents.archivedAt),
+            visibleTo(userId),
+          ),
+        )
+        .orderBy(asc(documents.workspaceId), asc(documents.title))
+        .limit(MAX_WORKSPACE_DOCUMENTS * workspaceIds.length),
+    { workspaceCount: workspaceIds.length },
+  );
+
+  const byWorkspace = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const list = byWorkspace.get(row.workspaceId) ?? [];
+    list.push(row);
+    byWorkspace.set(row.workspaceId, list);
+  }
+
+  return workspaceIds.map((workspaceId) => {
+    const nodes = new Map<string, DocumentTreeNode>();
+    for (const row of byWorkspace.get(workspaceId) ?? []) {
+      nodes.set(row.id, {
+        id: row.id,
+        title: row.title,
+        parentId: row.parentId,
+        icon: row.icon,
+        visibility: row.visibility,
+        docType: row.docType,
+        locked: row.lockedAt !== null,
+        updatedAt: row.updatedAt,
+        createdById: row.createdById,
+        children: [],
+      });
+    }
+    const roots: DocumentTreeNode[] = [];
+    for (const node of nodes.values()) {
+      const parent = node.parentId ? nodes.get(node.parentId) : undefined;
+      if (parent) parent.children.push(node);
+      else roots.push(node);
+    }
+    return { workspaceId, nodes: roots };
+  });
 }
 
 export async function getRecentDocuments(userId: string, workspaceId: string) {
@@ -281,12 +441,15 @@ export async function getRecentDocuments(userId: string, workspaceId: string) {
 
 export async function recordDocumentView(userId: string, documentId: string) {
   const db = getDb();
+  const now = new Date();
+  const updateBefore = new Date(now.getTime() - 5 * 60 * 1000);
   await db
     .insert(recentlyViewed)
-    .values({ id: nanoid(), userId, documentId, viewedAt: new Date() })
+    .values({ id: nanoid(), userId, documentId, viewedAt: now })
     .onConflictDoUpdate({
       target: [recentlyViewed.userId, recentlyViewed.documentId],
-      set: { viewedAt: new Date() },
+      set: { viewedAt: now },
+      setWhere: lt(recentlyViewed.viewedAt, updateBefore),
     });
 }
 
@@ -336,7 +499,8 @@ export async function listFavoriteDocuments(
         visibleTo(userId),
       ),
     )
-    .orderBy(desc(favorites.createdAt));
+    .orderBy(desc(favorites.createdAt))
+    .limit(MAX_SIDEBAR_FAVORITES);
 }
 
 /** Favorites across every workspace the user is still a member of. */
@@ -365,7 +529,17 @@ export async function listAllFavoriteDocuments(userId: string) {
         visibleTo(userId),
       ),
     )
-    .orderBy(desc(favorites.createdAt));
+    .orderBy(desc(favorites.createdAt))
+    .limit(MAX_SIDEBAR_FAVORITES);
+}
+
+/** Sidebar favorites and IDs from one query instead of two identical reads. */
+export async function listSidebarFavorites(userId: string) {
+  const documents = await listAllFavoriteDocuments(userId);
+  return {
+    documents,
+    ids: documents.map((document) => document.id),
+  };
 }
 
 /** Every favorited document id for the user, across all workspaces. */
@@ -396,6 +570,35 @@ export async function isFavorited(userId: string, documentId: string) {
 /* Create / save                                                               */
 /* -------------------------------------------------------------------------- */
 
+async function resolveParentAndBreadcrumb(opts: {
+  db: Database;
+  workspaceId: string;
+  requestedParentId?: string | null;
+  title: string;
+}) {
+  if (!opts.requestedParentId) {
+    return { parentId: null, breadcrumbPath: opts.title };
+  }
+
+  const [parent] = await opts.db
+    .select({
+      workspaceId: documents.workspaceId,
+      title: documents.title,
+      breadcrumbPath: documents.breadcrumbPath,
+    })
+    .from(documents)
+    .where(eq(documents.id, opts.requestedParentId))
+    .limit(1);
+
+  if (!parent || parent.workspaceId !== opts.workspaceId) {
+    return { parentId: null, breadcrumbPath: opts.title };
+  }
+  return {
+    parentId: opts.requestedParentId,
+    breadcrumbPath: `${parent.breadcrumbPath || parent.title} / ${opts.title}`,
+  };
+}
+
 export async function createDocument(opts: {
   userId: string;
   workspaceId: string;
@@ -411,25 +614,12 @@ export async function createDocument(opts: {
     type: "doc",
     content: [{ type: "paragraph" }],
   }).contentJson;
-
-  let parentId: string | null = opts.parentId ?? null;
-  let breadcrumbPath = title;
-  if (parentId) {
-    const [parent] = await db
-      .select({
-        workspaceId: documents.workspaceId,
-        title: documents.title,
-        breadcrumbPath: documents.breadcrumbPath,
-      })
-      .from(documents)
-      .where(eq(documents.id, parentId))
-      .limit(1);
-    if (!parent || parent.workspaceId !== opts.workspaceId) {
-      parentId = null;
-    } else {
-      breadcrumbPath = `${parent.breadcrumbPath || parent.title} / ${title}`;
-    }
-  }
+  const { parentId, breadcrumbPath } = await resolveParentAndBreadcrumb({
+    db,
+    workspaceId: opts.workspaceId,
+    requestedParentId: opts.parentId,
+    title,
+  });
 
   const [doc] = await db
     .insert(documents)
@@ -447,12 +637,7 @@ export async function createDocument(opts: {
     })
     .returning();
 
-  await syncDocumentSearchBlocks({
-    db,
-    documentId: doc.id,
-    title: doc.title,
-    contentJson: doc.contentJson,
-  });
+  await syncDocumentSearchAfterWrite(doc);
   await recordDocumentActivity({
     documentId: doc.id,
     userId: opts.userId,
@@ -470,37 +655,44 @@ export async function duplicateDocument(opts: {
 }) {
   const source = await getDocumentForUser(opts.userId, opts.documentId);
   if (!source) throw new Error("NOT_FOUND");
-
-  const copy = await createDocument({
-    userId: opts.userId,
-    workspaceId: source.workspaceId,
-    parentId: source.parentId,
-    title: `${source.title} (copy)`,
-    docType: source.docType,
-  });
-
+  await requireMembership(opts.userId, source.workspaceId, "member");
   const db = getDb();
+  const id = nanoid();
+  const title = `${source.title} (copy)`;
   const copiedContent = normalizeDocumentBlocks(source.contentJson, {
     regenerateIds: true,
   }).contentJson;
-  const [updated] = await db
-    .update(documents)
-    .set({
+  const { parentId, breadcrumbPath } = await resolveParentAndBreadcrumb({
+    db,
+    workspaceId: source.workspaceId,
+    requestedParentId: source.parentId,
+    title,
+  });
+  const [copy] = await db
+    .insert(documents)
+    .values({
+      id,
+      workspaceId: source.workspaceId,
+      parentId,
+      title,
+      breadcrumbPath,
+      docType: source.docType,
       contentJson: copiedContent,
       plainTextContent: extractPlainText(copiedContent),
       icon: source.icon,
+      createdById: opts.userId,
+      updatedById: opts.userId,
     })
-    .where(eq(documents.id, copy.id))
     .returning();
-  await syncDocumentSearchBlocks({
-    db,
-    documentId: updated.id,
-    title: updated.title,
-    contentJson: updated.contentJson,
+  await syncDocumentSearchAfterWrite(copy);
+  await recordDocumentActivity({
+    documentId: copy.id,
+    userId: opts.userId,
+    action: "created",
+    metadata: { docType: copy.docType, duplicatedFrom: source.id },
   });
-  refreshDocumentEmbeddingsAfterResponse(updated.id);
   revalidatePath(`/app/${source.workspaceId}`, "layout");
-  return updated;
+  return copy;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -574,42 +766,54 @@ export async function saveDocumentContent(opts: {
   documentId: string;
   title?: string;
   contentJson: Record<string, unknown>;
+  expectedRevision: number;
 }) {
   const existing = await requireEditableDocument(opts.userId, opts.documentId);
+  if (existing.revision !== opts.expectedRevision) {
+    throw new Error("EDIT_CONFLICT");
+  }
 
   const title = opts.title?.trim() || existing.title;
   const normalizedContent = normalizeDocumentBlocks(opts.contentJson).contentJson;
   const plainTextContent = extractPlainText(normalizedContent);
   const db = getDb();
 
-  // Snapshot the previous state when the edit is significant.
-  const [latestVersion] = await db
-    .select({
-      version: documentVersions.version,
-      createdAt: documentVersions.createdAt,
-    })
-    .from(documentVersions)
-    .where(eq(documentVersions.documentId, existing.id))
-    .orderBy(desc(documentVersions.version))
-    .limit(1);
+  // Version history is valuable, but a snapshot failure must never discard
+  // the user's current edit.
+  try {
+    const [latestVersion] = await db
+      .select({
+        version: documentVersions.version,
+        createdAt: documentVersions.createdAt,
+      })
+      .from(documentVersions)
+      .where(eq(documentVersions.documentId, existing.id))
+      .orderBy(desc(documentVersions.version))
+      .limit(1);
 
-  const createVersion = shouldCreateVersion({
-    lastVersionAt: latestVersion?.createdAt ?? null,
-    previousTitle: existing.title,
-    nextTitle: title,
-    previousPlainText: existing.plainTextContent,
-    nextPlainText: plainTextContent,
-  });
+    const createVersion = shouldCreateVersion({
+      lastVersionAt: latestVersion?.createdAt ?? null,
+      previousTitle: existing.title,
+      nextTitle: title,
+      previousPlainText: existing.plainTextContent,
+      nextPlainText: plainTextContent,
+    });
 
-  if (createVersion) {
-    await db.insert(documentVersions).values({
-      id: nanoid(),
+    if (createVersion) {
+      await db.insert(documentVersions).values({
+        id: nanoid(),
+        documentId: existing.id,
+        version: (latestVersion?.version ?? 0) + 1,
+        title: existing.title,
+        contentJson: existing.contentJson,
+        plainTextContent: existing.plainTextContent,
+        createdById: opts.userId,
+      });
+    }
+  } catch (error) {
+    logger.error("document.version_snapshot_failed", {
       documentId: existing.id,
-      version: (latestVersion?.version ?? 0) + 1,
-      title: existing.title,
-      contentJson: existing.contentJson,
-      plainTextContent: existing.plainTextContent,
-      createdById: opts.userId,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 
@@ -621,19 +825,22 @@ export async function saveDocumentContent(opts: {
       plainTextContent,
       updatedById: opts.userId,
       updatedAt: new Date(),
+      revision: sql`${documents.revision} + 1`,
     })
-    .where(eq(documents.id, existing.id))
+    .where(
+      and(
+        eq(documents.id, existing.id),
+        eq(documents.revision, opts.expectedRevision),
+      ),
+    )
     .returning();
+  if (!updated) throw new Error("EDIT_CONFLICT");
 
-  await syncDocumentSearchBlocks({
-    db,
-    documentId: updated.id,
-    title: updated.title,
-    contentJson: updated.contentJson,
-  });
-  refreshDocumentEmbeddingsAfterResponse(updated.id);
+  await syncDocumentSearchAfterWrite(updated);
   if (title !== existing.title) {
     await recomputeBreadcrumbs(db, existing.id);
+    // A renamed page can be embedded as a sub-page in any published page.
+    revalidateTag(PUBLIC_DOCUMENTS_TAG, { expire: 0 });
     // Refresh the sidebar tree (and any sub-page links) that show this title.
     revalidatePath(`/app/${existing.workspaceId}`, "layout");
     await recordDocumentActivity({
@@ -655,27 +862,35 @@ export async function saveDocumentContent(opts: {
   }
 
   if (existing.publishedAt && existing.publicSlug) {
+    invalidatePublicDocument(existing.publicSlug);
     revalidatePath(`/p/${existing.publicSlug}`);
   }
 
   // Notify participants after the response is sent (throttled inside).
   after(async () => {
-    const { notifyDocumentEdited } = await import("@/lib/notifications");
-    const [actor] = await db
-      .select({ name: user.name })
-      .from(user)
-      .where(eq(user.id, opts.userId))
-      .limit(1);
-    await notifyDocumentEdited({
-      doc: {
-        id: updated.id,
-        workspaceId: updated.workspaceId,
-        title: updated.title,
-        createdById: updated.createdById,
-      },
-      actorId: opts.userId,
-      actorName: actor?.name ?? "Someone",
-    });
+    try {
+      const { notifyDocumentEdited } = await import("@/lib/notifications");
+      const [actor] = await db
+        .select({ name: user.name })
+        .from(user)
+        .where(eq(user.id, opts.userId))
+        .limit(1);
+      await notifyDocumentEdited({
+        doc: {
+          id: updated.id,
+          workspaceId: updated.workspaceId,
+          title: updated.title,
+          createdById: updated.createdById,
+        },
+        actorId: opts.userId,
+        actorName: actor?.name ?? "Someone",
+      });
+    } catch (error) {
+      logger.error("document.edit_notification_failed", {
+        documentId: updated.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   });
 
   return updated;
@@ -691,16 +906,15 @@ export async function renameDocument(opts: {
   const db = getDb();
   const [updated] = await db
     .update(documents)
-    .set({ title, updatedById: opts.userId, updatedAt: new Date() })
+    .set({
+      title,
+      updatedById: opts.userId,
+      updatedAt: new Date(),
+      revision: sql`${documents.revision} + 1`,
+    })
     .where(eq(documents.id, existing.id))
     .returning();
-  await syncDocumentSearchBlocks({
-    db,
-    documentId: updated.id,
-    title: updated.title,
-    contentJson: updated.contentJson,
-  });
-  refreshDocumentEmbeddingsAfterResponse(updated.id);
+  await syncDocumentSearchAfterWrite(updated);
   await recomputeBreadcrumbs(db, existing.id);
   await recordDocumentActivity({
     documentId: existing.id,
@@ -708,6 +922,8 @@ export async function renameDocument(opts: {
     action: "renamed",
     metadata: { from: existing.title, to: title },
   });
+  revalidateTag(PUBLIC_DOCUMENTS_TAG, { expire: 0 });
+  invalidatePublicDocument(existing.publicSlug);
   return updated;
 }
 
@@ -729,10 +945,9 @@ export async function setDocumentLock(opts: {
   if (!canView(result.access)) throw new Error("FORBIDDEN");
   if (result.doc.docType !== "wiki") throw new Error("NOT_A_WIKI");
 
-  const membership = await getMembership(opts.userId, result.doc.workspaceId);
   if (
     !canManageWikiLock({
-      membershipRole: membership?.role ?? null,
+      membershipRole: result.membershipRole,
       platformRole: result.platformRole,
     })
   ) {
@@ -768,59 +983,66 @@ export async function setDocumentLock(opts: {
 
 /** Recompute breadcrumb paths for a document and all of its descendants. */
 async function recomputeBreadcrumbs(db: Database, rootId: string) {
-  const [root] = await db
-    .select({ id: documents.id, workspaceId: documents.workspaceId })
-    .from(documents)
-    .where(eq(documents.id, rootId))
-    .limit(1);
-  if (!root) return;
+  await db.execute(sql`
+    WITH RECURSIVE ancestors AS (
+      SELECT
+        id,
+        parent_id,
+        title,
+        title::text AS path,
+        ARRAY[id]::text[] AS visited,
+        0 AS depth
+      FROM documents
+      WHERE id = ${rootId}
 
-  const rows = await db
-    .select({
-      id: documents.id,
-      parentId: documents.parentId,
-      title: documents.title,
-      breadcrumbPath: documents.breadcrumbPath,
-    })
-    .from(documents)
-    .where(eq(documents.workspaceId, root.workspaceId));
+      UNION ALL
 
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  const pathFor = (id: string, seen = new Set<string>()): string => {
-    const row = byId.get(id);
-    if (!row || seen.has(id)) return "";
-    seen.add(id);
-    if (!row.parentId) return row.title;
-    const parentPath = pathFor(row.parentId, seen);
-    return parentPath ? `${parentPath} / ${row.title}` : row.title;
-  };
+      SELECT
+        parent.id,
+        parent.parent_id,
+        parent.title,
+        (parent.title || ' / ' || child.path)::text AS path,
+        child.visited || parent.id,
+        child.depth + 1
+      FROM documents parent
+      INNER JOIN ancestors child ON parent.id = child.parent_id
+      WHERE child.depth < 100
+        AND NOT parent.id = ANY(child.visited)
+    ),
+    root_path AS (
+      SELECT path
+      FROM ancestors
+      ORDER BY depth DESC
+      LIMIT 1
+    ),
+    subtree AS (
+      SELECT
+        root.id,
+        root_path.path,
+        ARRAY[root.id]::text[] AS visited,
+        0 AS depth
+      FROM documents root
+      CROSS JOIN root_path
+      WHERE root.id = ${rootId}
 
-  // Collect the subtree rooted at rootId.
-  const children = new Map<string, string[]>();
-  for (const row of rows) {
-    if (!row.parentId) continue;
-    const list = children.get(row.parentId) ?? [];
-    list.push(row.id);
-    children.set(row.parentId, list);
-  }
-  const subtree: string[] = [];
-  const queue = [rootId];
-  while (queue.length) {
-    const id = queue.shift()!;
-    subtree.push(id);
-    queue.push(...(children.get(id) ?? []));
-  }
+      UNION ALL
 
-  for (const id of subtree) {
-    const next = pathFor(id);
-    const row = byId.get(id);
-    if (row && next && next !== row.breadcrumbPath) {
-      await db
-        .update(documents)
-        .set({ breadcrumbPath: next })
-        .where(eq(documents.id, id));
-    }
-  }
+      SELECT
+        child.id,
+        (parent.path || ' / ' || child.title)::text AS path,
+        parent.visited || child.id,
+        parent.depth + 1
+      FROM documents child
+      INNER JOIN subtree parent ON child.parent_id = parent.id
+      WHERE parent.depth < 100
+        AND NOT child.id = ANY(parent.visited)
+    )
+    UPDATE documents target
+    SET breadcrumb_path = subtree.path
+    FROM subtree
+    WHERE target.id = subtree.id
+      AND target.breadcrumb_path IS DISTINCT FROM subtree.path
+  `);
 }
 
 export async function moveDocument(opts: {
@@ -833,32 +1055,54 @@ export async function moveDocument(opts: {
 
   if (opts.newParentId) {
     if (opts.newParentId === existing.id) throw new Error("INVALID_PARENT");
-    const [parent] = await db
-      .select({
-        id: documents.id,
-        workspaceId: documents.workspaceId,
-        parentId: documents.parentId,
-        archivedAt: documents.archivedAt,
-      })
-      .from(documents)
-      .where(eq(documents.id, opts.newParentId))
-      .limit(1);
-    if (!parent || parent.workspaceId !== existing.workspaceId || parent.archivedAt) {
+    const hierarchy = await db.execute(sql`
+      WITH RECURSIVE ancestors AS (
+        SELECT
+          id,
+          parent_id,
+          workspace_id,
+          archived_at,
+          ARRAY[id]::text[] AS visited,
+          0 AS depth
+        FROM documents
+        WHERE id = ${opts.newParentId}
+
+        UNION ALL
+
+        SELECT
+          parent.id,
+          parent.parent_id,
+          parent.workspace_id,
+          parent.archived_at,
+          child.visited || parent.id,
+          child.depth + 1
+        FROM documents parent
+        INNER JOIN ancestors child ON parent.id = child.parent_id
+        WHERE child.depth < 100
+          AND NOT parent.id = ANY(child.visited)
+      )
+      SELECT
+        root.workspace_id,
+        root.archived_at,
+        EXISTS (
+          SELECT 1 FROM ancestors WHERE id = ${existing.id}
+        ) AS creates_cycle
+      FROM ancestors root
+      WHERE root.id = ${opts.newParentId}
+      LIMIT 1
+    `);
+    const [parent] = hierarchy.rows as Array<{
+      workspace_id: string;
+      archived_at: Date | null;
+      creates_cycle: boolean;
+    }>;
+    if (
+      !parent ||
+      parent.workspace_id !== existing.workspaceId ||
+      parent.archived_at ||
+      parent.creates_cycle
+    ) {
       throw new Error("INVALID_PARENT");
-    }
-    // Prevent cycles: walk up from the new parent.
-    let cursor: string | null = parent.parentId;
-    const guard = new Set<string>([parent.id]);
-    while (cursor) {
-      if (cursor === existing.id) throw new Error("INVALID_PARENT");
-      if (guard.has(cursor)) break;
-      guard.add(cursor);
-      const [row] = await db
-        .select({ parentId: documents.parentId })
-        .from(documents)
-        .where(eq(documents.id, cursor))
-        .limit(1);
-      cursor = row?.parentId ?? null;
     }
   }
 
@@ -933,6 +1177,7 @@ export async function trashDocument(opts: {
     .where(and(inArray(documents.id, ids), isNull(documents.archivedAt)));
 
   if (result.doc.publishedAt && result.doc.publicSlug) {
+    invalidatePublicDocument(result.doc.publicSlug);
     revalidatePath(`/p/${result.doc.publicSlug}`);
   }
   await recordDocumentActivity({
@@ -956,12 +1201,12 @@ export async function restoreDocument(opts: {
   const result = await getDocumentWithAccess(opts.userId, opts.documentId);
   if (!result) throw new Error("NOT_FOUND");
   if (!canView(result.access)) throw new Error("FORBIDDEN");
-  const membership = await requireMembership(
-    opts.userId,
-    result.doc.workspaceId,
-    "member",
-  );
-  void membership;
+  if (
+    !result.membershipRole ||
+    !roleAtLeast(result.membershipRole, "member")
+  ) {
+    throw new Error("FORBIDDEN");
+  }
   if (!result.doc.archivedAt) return result.doc;
 
   const db = getDb();
@@ -992,6 +1237,9 @@ export async function restoreDocument(opts: {
     userId: opts.userId,
     action: "restored",
   });
+  if (result.doc.publishedAt) {
+    invalidatePublicDocument(result.doc.publicSlug);
+  }
   logger.info("document.restore", { documentId: result.doc.id });
   return result.doc;
 }
@@ -1019,7 +1267,8 @@ export async function listTrashedDocuments(
         visibleTo(userId),
       ),
     )
-    .orderBy(desc(documents.archivedAt));
+    .orderBy(desc(documents.archivedAt))
+    .limit(MAX_TRASH_DOCUMENTS);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1111,17 +1360,12 @@ export async function restoreDocumentVersion(opts: {
       plainTextContent: extractPlainText(restoredContent),
       updatedById: opts.userId,
       updatedAt: new Date(),
+      revision: sql`${documents.revision} + 1`,
     })
     .where(eq(documents.id, existing.id))
     .returning();
 
-  await syncDocumentSearchBlocks({
-    db,
-    documentId: updated.id,
-    title: updated.title,
-    contentJson: updated.contentJson,
-  });
-  refreshDocumentEmbeddingsAfterResponse(updated.id);
+  await syncDocumentSearchAfterWrite(updated);
   await recomputeBreadcrumbs(db, existing.id);
   await recordDocumentActivity({
     documentId: existing.id,
@@ -1129,6 +1373,10 @@ export async function restoreDocumentVersion(opts: {
     action: "version_restored",
     metadata: { version: version.version },
   });
+  if (existing.publishedAt) {
+    revalidateTag(PUBLIC_DOCUMENTS_TAG, { expire: 0 });
+    invalidatePublicDocument(existing.publicSlug);
+  }
   logger.info("document.restore_version", {
     documentId: existing.id,
     versionId: opts.versionId,
@@ -1169,8 +1417,12 @@ export async function publishDocument(opts: {
     .where(eq(documents.id, existing.id))
     .returning();
 
-  if (previousSlug) revalidatePath(`/p/${previousSlug}`);
+  if (previousSlug) {
+    invalidatePublicDocument(previousSlug);
+    revalidatePath(`/p/${previousSlug}`);
+  }
   if (updated.publicSlug && updated.publicSlug !== previousSlug) {
+    invalidatePublicDocument(updated.publicSlug);
     revalidatePath(`/p/${updated.publicSlug}`);
   }
 
@@ -1188,6 +1440,10 @@ export async function publishDocument(opts: {
 }
 
 export async function getPublicDocument(slug: string) {
+  "use cache";
+  cacheLife("max");
+  cacheTag(PUBLIC_DOCUMENTS_TAG, publicDocumentTag(slug));
+
   const db = getDb();
   const [row] = await db
     .select({
@@ -1265,7 +1521,9 @@ export async function listSharedWithMe(userId: string) {
 /* Workspaces list                                                             */
 /* -------------------------------------------------------------------------- */
 
-export async function listUserWorkspaces(userId: string) {
+export const listUserWorkspaces = cache(async function listUserWorkspaces(
+  userId: string,
+) {
   const db = getDb();
   return db
     .select({
@@ -1285,4 +1543,4 @@ export async function listUserWorkspaces(userId: string) {
       ),
     )
     .orderBy(desc(workspaces.isPersonal), asc(workspaces.name));
-}
+});

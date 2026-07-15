@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, gt } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   getDb,
@@ -45,45 +45,60 @@ export async function recordDocumentActivity(opts: {
   const db = opts.db ?? getDb();
   try {
     if (opts.action === "edited") {
-      // Coalesce with the user's own recent edit entry.
       const windowStart = new Date(Date.now() - EDIT_COALESCE_WINDOW_MS);
-      const [recent] = await db
-        .select({
-          id: documentActivity.id,
-          metadata: documentActivity.metadata,
-        })
-        .from(documentActivity)
-        .where(
-          and(
-            eq(documentActivity.documentId, opts.documentId),
-            eq(documentActivity.userId, opts.userId),
-            eq(documentActivity.action, "edited"),
-            gt(documentActivity.updatedAt, windowStart),
-          ),
-        )
-        .orderBy(desc(documentActivity.updatedAt))
-        .limit(1);
+      const newDelta = Number(
+        (opts.metadata as { charDelta?: number } | undefined)?.charDelta ?? 0,
+      );
+      const metadata = JSON.stringify(opts.metadata ?? {});
+      const id = nanoid();
 
-      if (recent) {
-        const previousDelta = Number(
-          (recent.metadata as { charDelta?: number }).charDelta ?? 0,
-        );
-        const newDelta = Number(
-          (opts.metadata as { charDelta?: number } | undefined)?.charDelta ?? 0,
-        );
-        await db
-          .update(documentActivity)
-          .set({
-            updatedAt: new Date(),
-            metadata: {
-              ...recent.metadata,
-              ...opts.metadata,
-              charDelta: previousDelta + newDelta,
-            },
-          })
-          .where(eq(documentActivity.id, recent.id));
-        return;
-      }
+      // Claim/update the latest edit session or insert a new one in a single
+      // statement. This removes a full Neon round trip from every autosave and
+      // prevents concurrent saves from creating avoidable duplicate sessions.
+      await db.execute(sql`
+        WITH recent AS (
+          SELECT id
+          FROM document_activity
+          WHERE document_id = ${opts.documentId}
+            AND user_id = ${opts.userId}
+            AND action = 'edited'
+            AND updated_at > ${windowStart}
+          ORDER BY updated_at DESC
+          LIMIT 1
+          FOR UPDATE
+        ),
+        updated AS (
+          UPDATE document_activity activity
+          SET
+            updated_at = NOW(),
+            metadata =
+              activity.metadata ||
+              ${metadata}::jsonb ||
+              jsonb_build_object(
+                'charDelta',
+                COALESCE((activity.metadata->>'charDelta')::int, 0) +
+                ${newDelta}
+              )
+          FROM recent
+          WHERE activity.id = recent.id
+          RETURNING activity.id
+        )
+        INSERT INTO document_activity (
+          id,
+          document_id,
+          user_id,
+          action,
+          metadata
+        )
+        SELECT
+          ${id},
+          ${opts.documentId},
+          ${opts.userId},
+          'edited',
+          ${metadata}::jsonb
+        WHERE NOT EXISTS (SELECT 1 FROM updated)
+      `);
+      return;
     }
 
     await db.insert(documentActivity).values({

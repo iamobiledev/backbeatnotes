@@ -21,7 +21,10 @@ export function ReadOnlyDoc({
       extensions: [
         StarterKit.configure({ link: false, codeBlock: false }),
         NotionCodeBlock,
-        Image.configure({ allowBase64: false }),
+        Image.configure({
+          allowBase64: false,
+          HTMLAttributes: { loading: "lazy", decoding: "async" },
+        }),
         Link.configure({ openOnClick: false }),
         TaskList,
         TaskItem.configure({ nested: true }),

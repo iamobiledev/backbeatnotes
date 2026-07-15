@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { and, eq, lt } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
@@ -73,7 +74,7 @@ export async function deleteConnection(workspaceId: string) {
   logger.info("slack.connection_deleted", { workspaceId });
 }
 
-export async function getConnectionForWorkspace(
+export const getConnectionForWorkspace = cache(async function getConnectionForWorkspace(
   workspaceId: string,
 ): Promise<SlackConnection | null> {
   const db = getDb();
@@ -93,7 +94,7 @@ export async function getConnectionForWorkspace(
     installedById: row.installedById,
     createdAt: row.createdAt,
   };
-}
+});
 
 /** Decrypted bot token for a workspace connection. */
 export async function getBotTokenForWorkspace(

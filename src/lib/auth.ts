@@ -23,6 +23,11 @@ export function createAuth() {
     appName: brand.name,
     baseURL: getAppUrl(),
     secret: env.BETTER_AUTH_SECRET,
+    rateLimit: {
+      // Browser suites intentionally create many short-lived sessions from
+      // one loopback IP. Production keeps Better Auth's default protection.
+      enabled: process.env.E2E_DISABLE_AUTH_RATE_LIMIT !== "1",
+    },
     database: drizzleAdapter(db, {
       provider: "pg",
       schema: {
@@ -101,10 +106,8 @@ export type Auth = ReturnType<typeof createAuth>;
 
 const globalForAuth = globalThis as unknown as { __docloomAuth?: Auth };
 
+/** Construct Better Auth once per warm runtime, not once per session read. */
 export function getAuth(): Auth {
-  if (process.env.NODE_ENV === "production") {
-    return createAuth();
-  }
   if (!globalForAuth.__docloomAuth) {
     globalForAuth.__docloomAuth = createAuth();
   }

@@ -1,6 +1,4 @@
-"use client";
-
-import { ReadOnlyDoc } from "@/components/documents/read-only-doc";
+import { StaticDocument } from "@/components/documents/static-document";
 import { brand } from "@/config/brand";
 import Link from "next/link";
 
@@ -31,7 +29,7 @@ export function PublicDocumentView({
       <h1 className="mb-6 font-[family-name:var(--font-display)] text-4xl tracking-tight">
         {title}
       </h1>
-      <ReadOnlyDoc contentJson={contentJson} />
+      <StaticDocument contentJson={contentJson} />
     </main>
   );
 }

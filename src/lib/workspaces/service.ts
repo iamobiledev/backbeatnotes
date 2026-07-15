@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { and, eq, lt } from "drizzle-orm";
 import { after } from "next/server";
 import { nanoid } from "nanoid";
@@ -101,7 +102,9 @@ export async function getOrCreatePersonalWorkspace(userId: string) {
   }
 }
 
-export async function getWorkspaceById(workspaceId: string) {
+export const getWorkspaceById = cache(async function getWorkspaceById(
+  workspaceId: string,
+) {
   const db = getDb();
   const [workspace] = await db
     .select()
@@ -109,7 +112,7 @@ export async function getWorkspaceById(workspaceId: string) {
     .where(eq(workspaces.id, workspaceId))
     .limit(1);
   return workspace ?? null;
-}
+});
 
 export async function listWorkspaceMembers(opts: {
   userId: string;

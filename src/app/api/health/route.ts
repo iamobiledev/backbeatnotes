@@ -1,15 +1,85 @@
 import { NextResponse } from "next/server";
-
-export const runtime = "nodejs";
+import { sql } from "drizzle-orm";
+import { getDb } from "@/db";
 
 /**
  * Post-deployment health check — does not expose secrets or DB credentials.
  */
 export async function GET() {
+  let database: {
+    connected: boolean;
+    coreSchemaReady: boolean;
+    searchSchemaReady: boolean;
+    error?: "unavailable";
+  };
+  try {
+    const probe = getDb().execute(sql`
+      SELECT
+        to_regclass('public.documents') IS NOT NULL AS core_documents,
+        to_regclass('public.workspace_members') IS NOT NULL AS core_memberships,
+        EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'documents'
+            AND column_name = 'revision'
+        ) AS core_revision,
+        to_regclass('public.document_search_blocks') IS NOT NULL AS search_blocks,
+        EXISTS (
+          SELECT 1 FROM pg_extension WHERE extname = 'vector'
+        ) AS search_vector
+    `);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const result = await Promise.race([
+      probe,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("health database timeout")),
+          4_000,
+        );
+      }),
+    ]).finally(() => {
+      if (timeout) clearTimeout(timeout);
+    });
+    const row = result.rows[0] as {
+      core_documents?: boolean;
+      core_memberships?: boolean;
+      core_revision?: boolean;
+      search_blocks?: boolean;
+      search_vector?: boolean;
+    };
+    database = {
+      connected: true,
+      coreSchemaReady: Boolean(
+        row.core_documents && row.core_memberships && row.core_revision,
+      ),
+      searchSchemaReady: Boolean(row.search_blocks && row.search_vector),
+    };
+  } catch {
+    database = {
+      connected: false,
+      coreSchemaReady: false,
+      searchSchemaReady: false,
+      error: "unavailable",
+    };
+  }
+
+  const requiredEnvReady = Boolean(
+    process.env.DATABASE_URL &&
+      process.env.BETTER_AUTH_SECRET &&
+      process.env.NEXT_PUBLIC_APP_URL,
+  );
+  const ok =
+    requiredEnvReady &&
+    database.connected &&
+    database.coreSchemaReady &&
+    database.searchSchemaReady;
   const checks = {
-    ok: true,
+    ok,
     service: "docloom",
     time: new Date().toISOString(),
+    status: ok ? "ready" : database.coreSchemaReady ? "degraded" : "unavailable",
+    database,
     env: {
       hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
       hasAuthSecret: Boolean(process.env.BETTER_AUTH_SECRET),
@@ -23,9 +93,10 @@ export async function GET() {
           ? "resend"
           : "console-only",
       vercelEnv: process.env.VERCEL_ENV ?? "unknown",
-      region: process.env.VERCEL_REGION ?? process.env.NEON_REGION ?? "unknown",
+      functionRegion: process.env.VERCEL_REGION ?? "unknown",
+      databaseRegion: process.env.NEON_REGION ?? "unknown",
     },
   };
 
-  return NextResponse.json(checks);
+  return NextResponse.json(checks, { status: ok ? 200 : 503 });
 }

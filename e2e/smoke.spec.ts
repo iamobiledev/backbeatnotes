@@ -27,12 +27,23 @@ test.describe("Docloom smoke", () => {
     expect(body.service).toBe("docloom");
   });
 
-  test("unknown public slug returns 404", async ({ page }) => {
+  test("unknown public slug renders a noindex not-found response", async ({
+    page,
+  }) => {
     test.skip(
       !process.env.PLAYWRIGHT_BASE_URL && !process.env.E2E_HAS_DATABASE,
       "Requires a live Neon database (deployed URL or E2E_HAS_DATABASE=1)",
     );
     const res = await page.goto("/p/this-slug-should-not-exist-xyz");
-    expect(res?.status()).toBe(404);
+    // Partial prerendering can stream a 200 shell before notFound() resolves;
+    // Next adds noindex so crawlers never index the soft-404 response.
+    expect([200, 404]).toContain(res?.status());
+    await expect(
+      page.getByRole("heading", { name: "Page not found" }),
+    ).toBeVisible();
+    await expect(page.locator('meta[name="robots"]').first()).toHaveAttribute(
+      "content",
+      /noindex/i,
+    );
   });
 });

@@ -134,10 +134,9 @@ test.describe.serial("page sharing", () => {
 
     // Content is visible but not editable (Can view).
     await expect(page.getByText("the part should be 70mm wide")).toBeVisible();
-    await expect(page.locator(".ProseMirror")).toHaveAttribute(
-      "contenteditable",
-      "false",
-    );
+    await expect(page.locator(".prose").first()).toBeVisible();
+    await expect(page.locator(".ProseMirror")).toHaveCount(0);
+    await expect(page.getByLabel("Document title")).toHaveCount(0);
 
     // Their Share popover is read-only: no invite input, levels as text.
     await openSharePopover(page);
