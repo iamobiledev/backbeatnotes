@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
@@ -14,20 +14,53 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  applicationName: brand.name,
   title: {
     default: brand.title,
-    template: `%s · ${brand.name}`,
+    template: `%s | ${brand.name}`,
   },
   description: brand.description,
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
-  ),
+  keywords: [...brand.keywords],
+  metadataBase: new URL(brand.siteUrl),
+  referrer: "origin-when-cross-origin",
+  creator: brand.name,
+  publisher: brand.name,
+  category: "productivity",
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
   openGraph: {
-    title: brand.name,
-    description: brand.tagline,
+    title: brand.socialTitle,
+    description: brand.description,
+    url: "/",
     siteName: brand.name,
+    locale: "en_US",
     type: "website",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: brand.socialTitle,
+    description: brand.description,
+  },
+  robots: {
+    index: false,
+    follow: false,
+  },
+  appleWebApp: {
+    capable: true,
+    title: brand.shortName,
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: brand.themeColor },
+    { media: "(prefers-color-scheme: dark)", color: "#191919" },
+  ],
 };
 
 export default function RootLayout({

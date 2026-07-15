@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
-const EMAIL = process.env.SEED_USER_EMAIL ?? "demo@docloom.local";
-const PASSWORD = process.env.SEED_USER_PASSWORD ?? "DocloomDemo123!";
+const EMAIL = process.env.SEED_USER_EMAIL ?? "demo@backbeatnotes.local";
+const PASSWORD = process.env.SEED_USER_PASSWORD ?? "BackBeatNotesDemo123!";
 const workspaceUrl = process.env.E2E_PERF_WORKSPACE_URL;
 const documentUrl = process.env.E2E_PERF_DOCUMENT_URL;
 const publicDocumentUrl = process.env.E2E_PUBLIC_DOCUMENT_URL;
@@ -19,7 +19,7 @@ test.describe("performance contracts", () => {
     page,
   }) => {
     await page.goto("/");
-    await expect(page.getByText("Docloom").first()).toBeVisible();
+    await expect(page.getByText("BackBeat Notes").first()).toBeVisible();
     const resources = await page.evaluate(() =>
       performance
         .getEntriesByType("resource")

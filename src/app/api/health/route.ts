@@ -76,7 +76,7 @@ export async function GET() {
     database.searchSchemaReady;
   const checks = {
     ok,
-    service: "docloom",
+    service: "backbeat-notes",
     time: new Date().toISOString(),
     status: ok ? "ready" : database.coreSchemaReady ? "degraded" : "unavailable",
     database,

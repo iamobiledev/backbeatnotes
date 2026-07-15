@@ -127,7 +127,7 @@ export async function POST(request: Request) {
       if (!post.ok) {
         if (post.error === "not_in_channel") {
           await ephemeral(
-            `I'm not in this channel yet — run \`/invite @${brand.name}\` first, then try again.`,
+            `I'm not in this channel yet — run \`/invite @${brand.slackHandle}\` first, then try again.`,
           );
         } else {
           await ephemeral("Couldn't share the document. Please try again.");

@@ -51,7 +51,7 @@ const serverEnvSchema = z.object({
   /** Override the Slack API base URL (tests/mocks only) */
   SLACK_API_BASE: z.string().url().optional(),
 
-  /* --- Optional LLM for the @docloom Slack assistant --- */
+  /* --- Optional LLM for the @backbeat-notes Slack assistant --- */
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
 });

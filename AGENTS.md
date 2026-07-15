@@ -29,6 +29,6 @@ If the proxy or DB is down you'll see `Error connecting to database` / TLS error
 Both `.env` and `.env.local` are needed and are git-ignored: the `tsx` scripts (`db:migrate`, `db:seed`) load `.env` via `dotenv`, while Next.js loads `.env.local`. They contain identical local values (`DATABASE_URL=postgresql://postgres:postgres@db.localtest.me/main`, a `BETTER_AUTH_SECRET`, `NEXT_PUBLIC_APP_URL`, `E2E_HAS_DATABASE=1`). Recreate from `.env.example` if missing.
 
 ### Other notes
-- Migrations are intentional (not on deploy): `pnpm db:migrate`, then `pnpm db:seed`. Seed login: `demo@docloom.local` / `DocloomDemo123!` (pre-verified; email/password sign-in requires a verified user).
+- Migrations are intentional (not on deploy): `pnpm db:migrate`, then `pnpm db:seed`. Seed login: `demo@backbeatnotes.local` / `BackBeatNotesDemo123!` (pre-verified; email/password sign-in requires a verified user).
 - `RESEND_API_KEY`/`BLOB_READ_WRITE_TOKEN` are unset locally — email logs to the console and Blob uploads are disabled; both are fine for most dev work.
 - `pnpm test:e2e` reuses an already-running dev server on `:3000`; set `E2E_HAS_DATABASE=1` for the DB-dependent smoke test.

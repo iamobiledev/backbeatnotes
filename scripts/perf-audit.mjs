@@ -34,7 +34,7 @@ async function measuredFetch(input, redirects = 0) {
       {
         headers: {
           "accept-encoding": "gzip, br",
-          "user-agent": "docloom-performance-audit",
+          "user-agent": "backbeat-notes-performance-audit",
         },
       },
       (response) => {

@@ -18,8 +18,8 @@ import { blockUrlFragment } from "@/lib/documents/blocks";
 import { attachLexicalBlockMatches } from "@/lib/search/document-blocks";
 
 /**
- * The `@docloom` mention assistant: interprets a natural-language request
- * ("@docloom can you find the onboarding doc?"), extracts a search query —
+ * The `@backbeat-notes` mention assistant: interprets a natural-language request
+ * ("@backbeat-notes can you find the onboarding doc?"), extracts a search query —
  * with Claude/OpenAI when an API key is configured, falling back to a solid
  * heuristic — and returns permission-filtered document cards.
  */
@@ -110,7 +110,7 @@ export type AssistantReply = {
 };
 
 /**
- * Build the reply for an @docloom mention (or `/docs` command).
+ * Build the reply for an @backbeat-notes mention (or `/docs` command).
  * `linkedUserId` must already be resolved from the Slack identity —
  * results are permission-filtered to that user.
  */
@@ -160,13 +160,13 @@ export async function buildSearchReply(opts: {
       : parsed.query;
   if (!query) {
     return {
-      text: `Tell me what to look for, e.g. "@${brand.name.toLowerCase()} find the onboarding doc".`,
+      text: `Tell me what to look for, e.g. "@${brand.slackHandle} find the onboarding doc".`,
       blocks: [
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `Tell me what to look for — e.g. _"@${brand.name.toLowerCase()} find the onboarding doc"_ or \`/docs onboarding\`.`,
+            text: `Tell me what to look for — e.g. _"@${brand.slackHandle} find the onboarding doc"_ or \`/docs onboarding\`.`,
           },
         },
       ],

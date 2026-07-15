@@ -190,7 +190,7 @@ describe("decideUnfurl (security matrix)", () => {
 /* ------------------------------ link parsing ------------------------------ */
 
 describe("parseDocLinks", () => {
-  const appUrl = "https://docloom.example.com";
+  const appUrl = "https://backbeatnotes.example.com";
 
   it("extracts doc ids and public slugs from app URLs", () => {
     const links = parseDocLinks(
@@ -240,7 +240,7 @@ describe("block builders", () => {
     expect(json).toContain("quick brown fox");
     expect(json).toContain("Demo User");
     expect(json).toContain("<!date^");
-    expect(json).toContain("Open in Docloom");
+    expect(json).toContain("Open in BackBeat Notes");
     expect(json).toContain("My Workspace");
   });
 
@@ -248,7 +248,7 @@ describe("block builders", () => {
     const json = JSON.stringify(
       minimalCard({ url: "https://app.example.com/app/w/docs/d" }),
     );
-    expect(json).toContain("open it in Docloom to view");
+    expect(json).toContain("open it in BackBeat Notes to view");
     expect(json).not.toContain("Launch");
   });
 
@@ -288,7 +288,7 @@ describe("extractQueryHeuristic", () => {
   });
 
   it("strips mention tokens", () => {
-    expect(stripMentions("<@U42|docloom> hello").trim()).toBe("hello");
+    expect(stripMentions("<@U42|backbeat-notes> hello").trim()).toBe("hello");
   });
 
   it("preserves the full reference text for similarity requests", () => {

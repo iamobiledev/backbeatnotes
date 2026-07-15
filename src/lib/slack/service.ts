@@ -140,7 +140,7 @@ export async function linkSlackUser(opts: {
   slackUserId: string;
 }) {
   const db = getDb();
-  // One Docloom account per Slack identity (and vice versa per team).
+  // One BackBeat Notes account per Slack identity (and vice versa per team).
   await db
     .delete(slackUserLinks)
     .where(
@@ -186,7 +186,7 @@ export async function unlinkSlackUser(opts: {
     );
 }
 
-/** Resolve the Docloom user linked to a Slack identity. */
+/** Resolve the BackBeat Notes user linked to a Slack identity. */
 export async function getLinkedUser(opts: {
   slackTeamId: string;
   slackUserId: string;

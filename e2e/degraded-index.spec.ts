@@ -5,8 +5,8 @@ const ENABLED = process.env.E2E_DEGRADED_INDEX === "1";
 const DB =
   process.env.E2E_DATABASE_URL ??
   "postgresql://postgres:postgres@127.0.0.1/main";
-const EMAIL = process.env.SEED_USER_EMAIL ?? "demo@docloom.local";
-const PASSWORD = process.env.SEED_USER_PASSWORD ?? "DocloomDemo123!";
+const EMAIL = process.env.SEED_USER_EMAIL ?? "demo@backbeatnotes.local";
+const PASSWORD = process.env.SEED_USER_PASSWORD ?? "BackBeatNotesDemo123!";
 
 function psql(query: string) {
   execFileSync("psql", [DB, "-v", "ON_ERROR_STOP=1", "-c", query], {

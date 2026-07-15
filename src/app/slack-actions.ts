@@ -183,7 +183,7 @@ export async function actionShareDocToSlack(input: {
       if (post.error === "not_in_channel") {
         return {
           ok: false,
-          error: `The ${brand.name} bot isn't in that channel yet — run /invite @${brand.name} in Slack first.`,
+          error: `The ${brand.name} bot isn't in that channel yet — run /invite @${brand.slackHandle} in Slack first.`,
         };
       }
       return { ok: false, error: "Slack rejected the message. Try again." };

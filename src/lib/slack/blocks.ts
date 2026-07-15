@@ -2,6 +2,8 @@
  * Block Kit builders for document cards (pure — unit-testable).
  */
 
+import { brand } from "@/config/brand";
+
 export type SlackBlock = Record<string, unknown>;
 
 export const EXCERPT_MAX_CHARS = 200;
@@ -45,7 +47,7 @@ export type DocumentCardInput = {
  * an "Open in app" button.
  */
 export function documentCard(input: DocumentCardInput): SlackBlock[] {
-  const appName = input.appName ?? "Docloom";
+  const appName = input.appName ?? brand.name;
   const title = escapeSlackText(input.title || "Untitled");
   const excerpt = escapeSlackText(buildExcerpt(input.excerptSource));
   const epoch = Math.floor(input.updatedAt.getTime() / 1000);
@@ -102,7 +104,7 @@ export function documentCard(input: DocumentCardInput): SlackBlock[] {
  * deleted/trashed) — never leaks title or content.
  */
 export function minimalCard(opts: { url: string; appName?: string }): SlackBlock[] {
-  const appName = opts.appName ?? "Docloom";
+  const appName = opts.appName ?? brand.name;
   return [
     {
       type: "section",
@@ -131,7 +133,7 @@ export function linkAccountCard(opts: {
   appName?: string;
   message?: string;
 }): SlackBlock[] {
-  const appName = opts.appName ?? "Docloom";
+  const appName = opts.appName ?? brand.name;
   return [
     {
       type: "section",

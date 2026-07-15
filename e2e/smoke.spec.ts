@@ -4,12 +4,12 @@ import { test, expect } from "@playwright/test";
  * Smoke tests — run against local, preview, or production:
  *   PLAYWRIGHT_BASE_URL=https://your-deployment.vercel.app pnpm test:e2e
  */
-test.describe("Docloom smoke", () => {
+test.describe("BackBeat Notes smoke", () => {
   test("marketing home loads with brand", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText("Docloom").first()).toBeVisible();
+    await expect(page.getByText("BackBeat Notes").first()).toBeVisible();
     await expect(
-      page.getByText("Your team's knowledge, organized."),
+      page.getByText(/Keep your team's knowledge in rhythm\./),
     ).toBeVisible();
   });
 
@@ -24,7 +24,7 @@ test.describe("Docloom smoke", () => {
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body.ok).toBe(true);
-    expect(body.service).toBe("docloom");
+    expect(body.service).toBe("backbeat-notes");
   });
 
   test("unknown public slug renders a noindex not-found response", async ({

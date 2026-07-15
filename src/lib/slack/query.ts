@@ -15,7 +15,7 @@ const FILLER_PATTERNS: RegExp[] = [
   /\b(thanks?( you)?|thx|ty)\b/gi,
 ];
 
-/** Strip Slack mention tokens like <@U12345> and <@U12345|docloom>. */
+/** Strip Slack mention tokens like <@U12345> and <@U12345|backbeat-notes>. */
 export function stripMentions(text: string): string {
   return text.replace(/<@[^>]+>/g, " ");
 }

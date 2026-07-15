@@ -102,7 +102,7 @@ detail = f"(ack {ack_ms:.0f}ms, {len(unfurls)} unfurl calls)"
 if ok:
     payload = json.loads(unfurls[0]["body"]["unfurls"]) if isinstance(unfurls[0]["body"], dict) else {}
     blocks = json.dumps(payload, ensure_ascii=False)
-    ok = "Welcome" in blocks and "Open in Docloom" in blocks and "✍️" in blocks
+    ok = "Welcome" in blocks and "Open in BackBeat Notes" in blocks and "✍️" in blocks
     detail += " full card w/ title+author+button" if ok else f" MISSING content: {blocks[:200]}"
 check("link_shared (linked sharer w/ access) → full unfurl", ok and ack_ms < 3000, detail)
 check("events ack under 3s", ack_ms < 3000, f"({ack_ms:.0f}ms)")
@@ -122,7 +122,7 @@ unfurls = [c for c in stub_calls() if c["method"] == "chat.unfurl"]
 ok = len(unfurls) == 1
 if ok:
     blocks = json.dumps(unfurls[0]["body"])
-    ok = "Welcome" not in blocks and "open it in Docloom to view" in json.loads(unfurls[0]["body"]["unfurls"]) .__str__()
+    ok = "Welcome" not in blocks and "open it in BackBeat Notes to view" in json.loads(unfurls[0]["body"]["unfurls"]) .__str__()
 check("link_shared (unlinked sharer) → minimal card, no title leak", ok)
 
 # ------------------------------------- 7. nonexistent doc → minimal card
@@ -131,7 +131,7 @@ ev3 = dict(ev, links=[{"url": f"{APP}/app/{WS}/docs/doesnotexist123", "domain": 
 status, body, dur = post("/api/slack/events", event_body(ev3, "Ev003-"+NONCE), "application/json")
 time.sleep(2)
 unfurls = [c for c in stub_calls() if c["method"] == "chat.unfurl"]
-ok = len(unfurls) == 1 and "open it in Docloom to view" in str(unfurls[0]["body"])
+ok = len(unfurls) == 1 and "open it in BackBeat Notes to view" in str(unfurls[0]["body"])
 check("link_shared (deleted doc) → neutral minimal card", ok)
 
 # -------------------------------- 8. personal notebook doc → minimal card
@@ -142,7 +142,7 @@ if PERSONAL_DOC:
     status, body, dur = post("/api/slack/events", event_body(ev4, "Ev004-"+NONCE), "application/json")
     time.sleep(2)
     unfurls = [c for c in stub_calls() if c["method"] == "chat.unfurl"]
-    ok = len(unfurls) == 1 and "Secret" not in str(unfurls[0]["body"]) and "open it in Docloom to view" in str(unfurls[0]["body"])
+    ok = len(unfurls) == 1 and "Secret" not in str(unfurls[0]["body"]) and "open it in BackBeat Notes to view" in str(unfurls[0]["body"])
     check("link_shared (personal notebook doc) → minimal card, no leak", ok)
 
 # ----------------------------------------------------- 9. app_mention reply
@@ -156,7 +156,7 @@ ok = len(posts) == 1
 if ok:
     blocks = str(posts[0]["body"])
     ok = "Welcome" in blocks and "#block-" in blocks and posts[0]["body"].get("thread_ts") == "333.444"
-check("@docloom mention → threaded reply with anchored doc card", ok, f"(ack {dur*1000:.0f}ms)")
+check("@backbeat-notes mention → threaded reply with anchored doc card", ok, f"(ack {dur*1000:.0f}ms)")
 
 # ------------------------------------ 10. app_mention from unlinked user
 reset_stub()
@@ -164,8 +164,8 @@ mention2 = dict(mention, user="U_STRANGER")
 status, body, dur = post("/api/slack/events", event_body(mention2, "Ev006-"+NONCE), "application/json")
 time.sleep(2.5)
 posts = [c for c in stub_calls() if c["method"] == "chat.postMessage"]
-ok = len(posts) == 1 and "Link my Docloom account" in str(posts[0]["body"]) and "Welcome" not in str(posts[0]["body"])
-check("@docloom mention (unlinked) → link-account prompt, no results", ok)
+ok = len(posts) == 1 and "Link my BackBeat Notes account" in str(posts[0]["body"]) and "Welcome" not in str(posts[0]["body"])
+check("@backbeat-notes mention (unlinked) → link-account prompt, no results", ok)
 
 # ------------------------------------------------ 11. /docs slash command
 reset_stub()
@@ -195,7 +195,7 @@ form = urllib.parse.urlencode({
 status, body, dur = post("/api/slack/commands", form, "application/x-www-form-urlencoded")
 time.sleep(2.5)
 responses = [c for c in stub_calls() if c["method"] == "response_url_unlinked"]
-ok = len(responses) == 1 and "Link my Docloom account" in str(responses[0]["body"])
+ok = len(responses) == 1 and "Link my BackBeat Notes account" in str(responses[0]["body"])
 check("/docs (unlinked) → link-account button", ok)
 
 # ------------------------------------- 13. interactive: share to channel

@@ -29,8 +29,8 @@ async function main() {
 
   const db = createDatabase(url);
 
-  const email = process.env.SEED_USER_EMAIL ?? "demo@docloom.local";
-  const password = process.env.SEED_USER_PASSWORD ?? "DocloomDemo123!";
+  const email = process.env.SEED_USER_EMAIL ?? "demo@backbeatnotes.local";
+  const password = process.env.SEED_USER_PASSWORD ?? "BackBeatNotesDemo123!";
   const name = process.env.SEED_USER_NAME ?? "Demo User";
 
   const existing = await db.query.user.findFirst({
@@ -194,7 +194,7 @@ async function main() {
   // A second verified user with no membership in the demo workspace —
   // useful for testing permissions locally (request access, private docs).
   const outsiderEmail =
-    process.env.SEED_OUTSIDER_EMAIL ?? "teammate@docloom.local";
+    process.env.SEED_OUTSIDER_EMAIL ?? "teammate@backbeatnotes.local";
   const existingOutsider = await db.query.user.findFirst({
     where: (u, { eq }) => eq(u.email, outsiderEmail),
   });

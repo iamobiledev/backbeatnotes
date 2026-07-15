@@ -1,8 +1,8 @@
-# Docloom
+# BackBeat Notes
 
-**Docloom — Your team's knowledge, organized.**
+**BackBeat Notes — Keep your team's knowledge in rhythm.**
 
-Docloom is a Vercel-first collaborative knowledge base built with Next.js (App Router), Neon Postgres, Better Auth, Tiptap, and Vercel Blob. Product naming lives in `src/config/brand.ts` so the temporary name is easy to replace later.
+BackBeat Notes is a Vercel-first collaborative knowledge base built with Next.js (App Router), Neon Postgres, Better Auth, Tiptap, and Vercel Blob. Product naming lives in `src/config/brand.ts`.
 
 ## Features
 
@@ -14,7 +14,7 @@ Docloom is a Vercel-first collaborative knowledge base built with Next.js (App R
 - **User types** — platform `admin` (creates team workspaces, locks/edits locked wikis) and `developer` (regular user). The first registered user automatically becomes an admin.
 - **Email notifications** — invitation emails, "you've joined a workspace" + "your invite was accepted" emails, and document-activity alerts to a page's creator and previous editors (throttled to one email per person per page per 6 hours, per-user opt-out in Settings → Notifications). Pending invitations show when the email was sent, with one-click resend.
 - **Search** — fast Postgres full-text + trigram search with weighted ranking (exact title → prefix → fuzzy → body → recency), a global **⌘K / Ctrl+K** palette with highlighted snippets and owner/date/scope filters, permission-filtered inside SQL.
-- **Slack integration** — paste a doc link in Slack and get a rich inline preview (permission-aware), search with `/docs`, or ask `@docloom` for documents like a detailed description. Semantic results quote and deep-link to the matching paragraph in rich threaded cards. See [Slack integration](#slack-integration).
+- **Slack integration** — paste a doc link in Slack and get a rich inline preview (permission-aware), search with `/docs`, or ask `@backbeat-notes` for documents like a detailed description. Semantic results quote and deep-link to the matching paragraph in rich threaded cards. See [Slack integration](#slack-integration).
 - **Polish** — keyboard shortcuts (press `?` in the app), loading skeletons, empty states, toasts, responsive layout with a mobile drawer.
 
 ## Stack
@@ -46,7 +46,7 @@ pnpm db:seed
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Seed credentials default to `demo@docloom.local` / `DocloomDemo123!` (plus `teammate@docloom.local`, a second verified user with no workspace membership — handy for testing permissions).
+Open [http://localhost:3000](http://localhost:3000). Seed credentials default to `demo@backbeatnotes.local` / `BackBeatNotesDemo123!` (plus `teammate@backbeatnotes.local`, a second verified user with no workspace membership — handy for testing permissions).
 
 **No Neon account needed for local dev:** when `DATABASE_URL` points at `localhost` (or `DATABASE_DRIVER=pg` is set), the app automatically uses the `node-postgres` driver instead of the Neon HTTP driver. Install pgvector for your PostgreSQL version (for example, `sudo apt install postgresql-16-pgvector` on Ubuntu), then enable the required extensions:
 
@@ -106,8 +106,8 @@ Set `SKIP_ENV_VALIDATION=1` only for offline lint/typecheck.
 ```ts
 // src/config/brand.ts
 export const brand = {
-  name: "Docloom",
-  tagline: "Your team's knowledge, organized.",
+  name: "BackBeat Notes",
+  tagline: "Keep your team's knowledge in rhythm.",
   // ...
 };
 ```
@@ -170,9 +170,9 @@ Supported flows: email/password, email verification, password reset, secure sess
 ### 6. Configure email delivery
 
 1. Create a [Resend](https://resend.com) API key and verified domain.
-2. Set `RESEND_API_KEY` and `EMAIL_FROM` (e.g. `Docloom <noreply@your-domain.com>`).
+2. Set `RESEND_API_KEY` and `EMAIL_FROM` (e.g. `BackBeat Notes <noreply@your-domain.com>`).
 3. Without these, the console email provider logs messages (local-friendly).
-4. For quick testing before a domain is verified, `EMAIL_FROM=Docloom <onboarding@resend.dev>` works, but Resend only delivers it to your own account address — switch to a verified domain for real recipients.
+4. For quick testing before a domain is verified, `EMAIL_FROM=BackBeat Notes <onboarding@resend.dev>` works, but Resend only delivers it to your own account address — switch to a verified domain for real recipients.
 
 Emails sent: verification/reset (auth), workspace invitations (+ resend), joined-workspace + invitation-accepted confirmations, and throttled document-activity alerts (opt-out per user under Settings → Notifications).
 
@@ -225,7 +225,7 @@ Refuses to run in production unless `SEED_ALLOW_PRODUCTION=true`.
 curl https://your-deployment.vercel.app/api/health
 ```
 
-Expect `{ "ok": true, "service": "docloom", ... }` without secrets.
+Expect `{ "ok": true, "service": "backbeat-notes", ... }` without secrets.
 
 ### 12. Tests
 
@@ -344,16 +344,16 @@ The goal: find and share docs without leaving Slack, and make any pasted doc lin
 
 | Feature | How |
 | --- | --- |
-| Inline link previews (unfurls) | Paste any doc link in Slack → rich card with title, ~200-char excerpt, author, last-edited time, and an *Open in Docloom* button. Permission-aware: private/trashed/deleted docs and links shared by unlinked users render a neutral "open in Docloom to view" card — content never leaks. |
+| Inline link previews (unfurls) | Paste any doc link in Slack → rich card with title, ~200-char excerpt, author, last-edited time, and an *Open in BackBeat Notes* button. Permission-aware: private/trashed/deleted docs and links shared by unlinked users render a neutral "open in BackBeat Notes to view" card — content never leaks. |
 | `/docs <query>` | Ephemeral search results (permission-filtered to *your* linked identity) with *Open* and *Share to channel* buttons. |
-| `@docloom find the onboarding doc` | Mention the bot in natural language — it extracts a keyword query and replies in the originating thread with rich document cards. |
-| `@docloom find docs like this: password reset emails never arrive` | With `OPENAI_API_KEY`, searches by meaning across paragraph embeddings, quotes the closest paragraph, and links directly to it. Without OpenAI it falls back to scoped keyword search. |
+| `@backbeat-notes find the onboarding doc` | Mention the bot in natural language — it extracts a keyword query and replies in the originating thread with rich document cards. |
+| `@backbeat-notes find docs like this: password reset emails never arrive` | With `OPENAI_API_KEY`, searches by meaning across paragraph embeddings, quotes the closest paragraph, and links directly to it. Without OpenAI it falls back to scoped keyword search. |
 | Share to Slack from the app | In any page's Share dialog: pick a channel, add an optional message, post a rich card. |
 
 ### 1. Create the Slack app
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From a manifest**.
-2. Pick your Slack workspace, then paste the contents of [`slack-app-manifest.json`](./slack-app-manifest.json), replacing every `YOUR_APP_DOMAIN` with your deployed domain (e.g. `docloom.vercel.app`) — or your ngrok domain for local testing.
+2. Pick your Slack workspace, then paste the contents of [`slack-app-manifest.json`](./slack-app-manifest.json), replacing every `YOUR_APP_DOMAIN` with your deployed domain (e.g. `backbeatnotes.vercel.app`) — or your ngrok domain for local testing.
 3. Create the app. Under **Basic Information → App Credentials**, copy the **Client ID**, **Client Secret**, and **Signing Secret**.
 
 The manifest requests only the scopes the features need: `links:read`, `links:write`, `chat:write`, `commands`, `app_mentions:read` (bot) and `openid email` (user identity linking).
@@ -375,9 +375,9 @@ Redeploy (or restart `pnpm dev`). Without these variables every Slack surface sh
 
 ### 3. Connect a workspace
 
-1. In Docloom: **Settings → Slack → Connect Slack** (workspace admins only). This runs the OAuth install; the bot token is stored encrypted (AES-256-GCM) in Postgres.
+1. In BackBeat Notes: **Settings → Slack → Connect Slack** (workspace admins only). This runs the OAuth install; the bot token is stored encrypted (AES-256-GCM) in Postgres.
 2. Each user who wants permission-aware search/unfurls clicks **Settings → Slack → Link my account** (Sign in with Slack, OIDC).
-3. In Slack, `/invite @docloom` into channels where you want the bot to post shared cards.
+3. In Slack, `/invite @backbeat-notes` into channels where you want the bot to post shared cards.
 
 Slack will verify the events URL (`/api/slack/events`) when the app is created — the endpoint answers the `url_verification` challenge automatically.
 
@@ -419,7 +419,7 @@ python3 scripts/slack-sim.py                # simulates signed Slack webhooks en
 curl http://localhost:4571/calls            # inspect exactly what the app sent to "Slack"
 ```
 
-The simulation suite covers the signature checks, the 3-second ack budget, event redelivery idempotency, the full unfurl permission matrix, `@docloom` mentions, `/docs`, and share-to-channel.
+The simulation suite covers the signature checks, the 3-second ack budget, event redelivery idempotency, the full unfurl permission matrix, `@backbeat-notes` mentions, `/docs`, and share-to-channel.
 
 ### Reliability & security notes
 
@@ -516,7 +516,7 @@ Long-running processes, sticky sessions, always-on WebSockets, local filesystem 
 
 1. Check `https://your-deployment/api/health` → `env.emailDelivery`. `"console-only"` means `RESEND_API_KEY` and/or `EMAIL_FROM` are **not set** — emails are only logged to the function console, never delivered. Production logs also show a `email.not_configured` warning.
 2. Set `RESEND_API_KEY` and `EMAIL_FROM` in Vercel → Settings → Environment Variables (Production + Preview) and redeploy.
-3. `EMAIL_FROM` must use a domain verified in Resend (e.g. `Docloom <noreply@your-domain.com>`). `onboarding@resend.dev` only delivers to your own Resend account address.
+3. `EMAIL_FROM` must use a domain verified in Resend (e.g. `BackBeat Notes <noreply@your-domain.com>`). `onboarding@resend.dev` only delivers to your own Resend account address.
 4. Invitations are never lost on email failure — admins can hit **Resend** in Settings → Members once delivery works.
 
 ### Blob upload failures

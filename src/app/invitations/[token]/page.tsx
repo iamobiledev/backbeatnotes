@@ -6,8 +6,8 @@ import {
   actionAcceptDocumentInvitation,
 } from "@/app/actions";
 import { getDocumentInvitationByToken } from "@/lib/documents/sharing";
+import { BrandLogo } from "@/components/brand/brand-logo";
 import { Button } from "@/components/ui/button";
-import { brand } from "@/config/brand";
 import { getDb, workspaceInvitations, workspaces } from "@/db";
 import { eq } from "drizzle-orm";
 
@@ -77,9 +77,10 @@ export default async function InvitationPage({
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
-      <p className="font-[family-name:var(--font-display)] text-xl font-semibold text-[var(--primary)]">
-        {brand.name}
-      </p>
+      <BrandLogo
+        markClassName="h-8 w-8"
+        wordmarkClassName="text-xl"
+      />
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">
         Join {invitation.workspaceName}
       </h1>
@@ -132,9 +133,10 @@ function DocumentInvitationScreen({
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
-      <p className="font-[family-name:var(--font-display)] text-xl font-semibold text-[var(--primary)]">
-        {brand.name}
-      </p>
+      <BrandLogo
+        markClassName="h-8 w-8"
+        wordmarkClassName="text-xl"
+      />
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">
         {invitation.inviterName ?? "A teammate"} shared “
         {invitation.documentTitle || "Untitled"}” with you

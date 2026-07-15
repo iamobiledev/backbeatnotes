@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { brand } from "@/config/brand";
+import { BrandLogo } from "@/components/brand/brand-logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,9 +18,13 @@ export default function ForgotPasswordPage() {
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6 py-16">
       <Link
         href="/"
-        className="mb-8 font-[family-name:var(--font-display)] text-2xl font-semibold text-[var(--primary)]"
+        aria-label={`${brand.name} home`}
+        className="mb-8 w-fit"
       >
-        {brand.name}
+        <BrandLogo
+          markClassName="h-9 w-9"
+          wordmarkClassName="text-2xl"
+        />
       </Link>
       <h1 className="text-2xl font-semibold tracking-tight">Reset password</h1>
       <p className="mt-2 text-sm text-[var(--muted-foreground)]">

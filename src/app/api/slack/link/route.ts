@@ -6,7 +6,7 @@ import { createStateToken } from "@/lib/slack/state";
 
 /**
  * Starts the Sign-in-with-Slack (OIDC) flow to link the current user's
- * Slack identity to their Docloom account.
+ * Slack identity to their BackBeat Notes account.
  * GET /api/slack/link?workspaceId=…   (workspaceId is only used to
  * redirect back to the right settings page afterwards)
  */

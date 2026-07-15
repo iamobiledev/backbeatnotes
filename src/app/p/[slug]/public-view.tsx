@@ -1,4 +1,5 @@
 import { StaticDocument } from "@/components/documents/static-document";
+import { BrandLogo } from "@/components/brand/brand-logo";
 import { brand } from "@/config/brand";
 import Link from "next/link";
 
@@ -18,9 +19,12 @@ export function PublicDocumentView({
       <header className="mb-10 flex items-center justify-between">
         <Link
           href="/"
-          className="font-[family-name:var(--font-display)] text-lg font-semibold text-[var(--primary)]"
+          aria-label={`${brand.name} home`}
         >
-          {brand.name}
+          <BrandLogo
+            markClassName="h-7 w-7"
+            wordmarkClassName="text-lg"
+          />
         </Link>
         <p className="text-xs text-[var(--muted-foreground)]">
           Published · {new Date(updatedAt).toLocaleDateString()} · {creatorName}

@@ -4,7 +4,7 @@ import { brand } from "@/config/brand";
  * Branded transactional email layout.
  *
  * Matches the application UI (src/app/globals.css): Notion-ish neutrals,
- * the Docloom blue for actions, soft card on a muted canvas. Built with
+ * the BackBeat blue for actions, soft card on a muted canvas. Built with
  * table layout + inline styles for broad email-client compatibility
  * (Gmail, Outlook, Apple Mail); no external images or webfonts.
  */

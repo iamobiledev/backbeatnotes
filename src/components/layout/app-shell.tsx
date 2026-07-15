@@ -33,6 +33,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { brand } from "@/config/brand";
+import { BrandLogo, BrandMark } from "@/components/brand/brand-logo";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import {
@@ -187,6 +188,13 @@ export function AppShell({
   const sidebar = (
     <div className="flex h-full flex-col text-sm">
       <div className="flex items-center gap-1 px-2">
+        <Link
+          href={`/app/${workspace.id}`}
+          aria-label={`${brand.name} workspace home`}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[var(--sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        >
+          <BrandMark className="h-6 w-6" />
+        </Link>
         <WorkspaceSwitcher
           current={workspace}
           workspaces={workspaces}
@@ -826,8 +834,11 @@ function WorkspaceSwitcher({
             </>
           )}
           <DropdownMenuSeparator />
-          <p className="px-2 py-1 text-[11px] text-[var(--muted-foreground)]">
-            {brand.name}
+          <p className="px-2 py-1 text-[var(--muted-foreground)]">
+            <BrandLogo
+              markClassName="h-4 w-4"
+              wordmarkClassName="text-[11px] font-semibold"
+            />
           </p>
         </DropdownMenuContent>
       </DropdownMenu>

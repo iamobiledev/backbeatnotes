@@ -624,7 +624,7 @@ export const files = pgTable(
 /* -------------------------------------------------------------------------- */
 
 /**
- * One Slack team connection per Docloom workspace, installed by an admin.
+ * One Slack team connection per BackBeat Notes workspace, installed by an admin.
  * The bot token is encrypted at rest (AES-256-GCM, see src/lib/slack/crypto).
  */
 export const slackConnections = pgTable(
@@ -656,7 +656,7 @@ export const slackConnections = pgTable(
   ],
 );
 
-/** Links a Docloom user to their Slack identity in a specific Slack team. */
+/** Links a BackBeat Notes user to their Slack identity in a specific Slack team. */
 export const slackUserLinks = pgTable(
   "slack_user_links",
   {

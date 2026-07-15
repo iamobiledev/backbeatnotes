@@ -7,10 +7,10 @@ import { execSync } from "node:child_process";
  * Requires a seeded local DB (`pnpm db:seed`).
  */
 
-const DEMO_EMAIL = process.env.SEED_USER_EMAIL ?? "demo@docloom.local";
+const DEMO_EMAIL = process.env.SEED_USER_EMAIL ?? "demo@backbeatnotes.local";
 const OUTSIDER_EMAIL =
-  process.env.SEED_OUTSIDER_EMAIL ?? "teammate@docloom.local";
-const PASSWORD = process.env.SEED_USER_PASSWORD ?? "DocloomDemo123!";
+  process.env.SEED_OUTSIDER_EMAIL ?? "teammate@backbeatnotes.local";
+const PASSWORD = process.env.SEED_USER_PASSWORD ?? "BackBeatNotesDemo123!";
 const DB =
   process.env.E2E_DATABASE_URL ??
   "postgresql://docloom:docloom@localhost:5432/docloom";
