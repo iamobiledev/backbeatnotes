@@ -153,6 +153,59 @@ export function getAppUrl(): string {
   return "http://localhost:3000";
 }
 
+function hostFromUrlOrHost(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    if (trimmed.includes("://")) return new URL(trimmed).host;
+  } catch {
+    return null;
+  }
+  // Host or host:port (optionally with a trailing slash / path to strip).
+  return trimmed.replace(/\/.*$/, "") || null;
+}
+
+/**
+ * Hostnames Better Auth may accept for per-request base URL resolution.
+ * Covers the canonical app URL, Vercel production/preview aliases, and any
+ * extra entries from `BETTER_AUTH_TRUSTED_ORIGINS` (comma-separated hosts or
+ * origins). Better Auth also mirrors these into `trustedOrigins`.
+ */
+export function getAuthAllowedHosts(): string[] {
+  const hosts = new Set<string>();
+  const add = (value: string | undefined | null) => {
+    if (!value) return;
+    const host = hostFromUrlOrHost(value);
+    if (host) hosts.add(host);
+  };
+
+  add(process.env.BETTER_AUTH_URL);
+  add(process.env.NEXT_PUBLIC_APP_URL);
+  add(process.env.VERCEL_URL);
+  add(process.env.VERCEL_PROJECT_PRODUCTION_URL);
+  add(process.env.VERCEL_BRANCH_URL);
+
+  const extra = process.env.BETTER_AUTH_TRUSTED_ORIGINS;
+  if (extra) {
+    for (const part of extra.split(",")) add(part);
+  }
+
+  if (process.env.VERCEL || process.env.VERCEL_URL) {
+    hosts.add("*.vercel.app");
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    hosts.add("localhost:3000");
+    hosts.add("127.0.0.1:3000");
+  }
+
+  if (hosts.size === 0) {
+    hosts.add("localhost:3000");
+  }
+
+  return [...hosts];
+}
+
 /** Connection string for migrations (prefer unpooled / direct). */
 export function getMigrationDatabaseUrl(): string {
   const env = getServerEnv();

@@ -160,9 +160,9 @@ Private workspace files use private Blob access. Public document assets may use 
 
 1. Generate `BETTER_AUTH_SECRET`.
 2. Set `NEXT_PUBLIC_APP_URL` (and optionally `BETTER_AUTH_URL`) to:
-   - Production: `https://your-domain.com`
-   - Preview: leave as the preview URL or use a wildcard-aware setup; Better Auth `trustedOrigins` uses the configured app URL.
-3. Auth routes: `/api/auth/*`.
+   - Production: `https://your-domain.com` (the custom domain users type in the browser — not a `*.vercel.app` alias)
+   - Preview: leave unset to fall back to `VERCEL_URL`, or set a preview URL; Better Auth `baseURL.allowedHosts` also allows `*.vercel.app` on Vercel
+3. Auth routes: `/api/auth/*` (browser client uses same-origin relative paths).
 4. Sessions are stored in Neon (`session`, `account`, `verification`, `user`).
 
 Supported flows: email/password, email verification, password reset, secure session cookies, workspace invitations, accept invitation, sign out (current device), sign out all devices (`POST /api/auth/revoke-sessions`).
@@ -507,10 +507,12 @@ Long-running processes, sticky sessions, always-on WebSockets, local filesystem 
 
 ### Auth not working on production domain
 
-1. `NEXT_PUBLIC_APP_URL` / `BETTER_AUTH_URL` must match the HTTPS production domain.
-2. Rotate/check `BETTER_AUTH_SECRET`.
-3. Confirm email verification links use the same domain.
-4. Clear cookies and retry.
+1. `NEXT_PUBLIC_APP_URL` / `BETTER_AUTH_URL` must be the HTTPS **custom domain** (e.g. `https://backbeatnotes.com`), not a `*.vercel.app` alias. Email/OAuth links use this value.
+2. The browser auth client calls same-origin `/api/auth` (it does **not** hardcode `NEXT_PUBLIC_APP_URL`), so sign-in works on both the custom domain and Vercel aliases.
+3. If you still see CORS errors to a different hostname, an old client bundle is caching a cross-origin `baseURL` — redeploy after this fix.
+4. Optional: set `BETTER_AUTH_TRUSTED_ORIGINS` to a comma-separated list of extra hosts/origins (www, staging, etc.).
+5. Rotate/check `BETTER_AUTH_SECRET`.
+6. Clear cookies and retry.
 
 ### Emails (invitations, shares, verification) not sending
 
