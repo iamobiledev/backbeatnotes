@@ -10,6 +10,10 @@ import {
   sendVerificationEmail,
 } from "@/lib/email";
 import { brand } from "@/config/brand";
+import {
+  invitationBelongsToEmail,
+  INVITATION_SIGN_UP_HEADER,
+} from "@/lib/invitations";
 
 /**
  * Better Auth configured with Neon (via Drizzle) as the persistent store.
@@ -55,7 +59,20 @@ export function createAuth() {
     emailVerification: {
       sendOnSignUp: true,
       autoSignInAfterVerification: true,
-      sendVerificationEmail: async ({ user: u, url }) => {
+      sendVerificationEmail: async ({ user: u, url }, request) => {
+        const invitationToken = request?.headers.get(
+          INVITATION_SIGN_UP_HEADER,
+        );
+        if (
+          invitationToken &&
+          (await invitationBelongsToEmail(invitationToken, u.email))
+        ) {
+          // The pending invitation link already proves control of this exact
+          // email address. The invitation action verifies the newly-created
+          // account before signing in, so a second verification email would
+          // only send the user out of the onboarding flow.
+          return;
+        }
         await sendVerificationEmail({
           to: u.email,
           url,

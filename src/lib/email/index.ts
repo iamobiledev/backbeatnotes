@@ -195,6 +195,7 @@ export async function sendWorkspaceInvitationEmail(opts: {
       heading: `Join ${opts.workspaceName}`,
       paragraphsHtml: [
         `${strong(opts.inviterName)} invited you to join ${strong(opts.workspaceName)} on ${brand.name} — ${p`${brand.tagline.toLowerCase()}`}`,
+        p`Open the invitation to sign in, or set a password if you're new. You'll confirm the invitation before joining.`,
       ],
       cta: { label: "Accept invitation", url },
       noteHtml: p`This invitation expires in 7 days. If you weren't expecting it, you can ignore this email.`,
@@ -310,11 +311,11 @@ export async function sendDocumentInvitationEmail(opts: {
     to: opts.to,
     subject: `${opts.sharerName} shared "${opts.documentTitle}" with you on ${brand.name}`,
     html: renderEmail({
-      preheader: `Create a free account to open ${opts.documentTitle}.`,
+      preheader: `Open your invitation to view ${opts.documentTitle}.`,
       heading: `${opts.sharerName} shared a page with you`,
       paragraphsHtml: [
         `${strong(opts.sharerName)} shared ${strong(opts.documentTitle)} with you on ${brand.name}.`,
-        p`Create a free account with this email address to open it.`,
+        p`Open the invitation to sign in, or set a password if you're new. You'll confirm the invitation before opening the page.`,
       ],
       cta: { label: "Open the invitation", url },
       noteHtml: p`This invitation expires in 7 days. If you weren't expecting it, you can ignore this email.`,

@@ -1,15 +1,20 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { requireVerifiedSession } from "@/lib/session";
+import { getSession } from "@/lib/session";
 import {
   actionAcceptInvitation,
   actionAcceptDocumentInvitation,
 } from "@/app/actions";
-import { getDocumentInvitationByToken } from "@/lib/documents/sharing";
 import { BrandLogo } from "@/components/brand/brand-logo";
 import { Button } from "@/components/ui/button";
-import { getDb, workspaceInvitations, workspaces } from "@/db";
-import { eq } from "drizzle-orm";
+import {
+  getInvitationAccount,
+  getInvitationByToken,
+  invitationMatchesEmail,
+  isInvitationActive,
+  type InvitationDetails,
+} from "@/lib/invitations";
+import { InvitationAuthForm } from "./invitation-auth-form";
 
 const LEVEL_LABEL: Record<string, string> = {
   full_access: "Full access",
@@ -23,145 +28,137 @@ export default async function InvitationPage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const session = await requireVerifiedSession();
-
-  const db = getDb();
-  const [invitation] = await db
-    .select({
-      id: workspaceInvitations.id,
-      email: workspaceInvitations.email,
-      status: workspaceInvitations.status,
-      expiresAt: workspaceInvitations.expiresAt,
-      workspaceName: workspaces.name,
-    })
-    .from(workspaceInvitations)
-    .innerJoin(
-      workspaces,
-      eq(workspaces.id, workspaceInvitations.workspaceId),
-    )
-    .where(eq(workspaceInvitations.token, token))
-    .limit(1);
+  const [session, invitation] = await Promise.all([
+    getSession(),
+    getInvitationByToken(token),
+  ]);
 
   if (!invitation) {
-    // Not a workspace invitation — maybe a shared-page invitation.
-    const docInvitation = await getDocumentInvitationByToken(token);
-    if (docInvitation) {
-      return (
-        <DocumentInvitationScreen
-          token={token}
-          invitation={docInvitation}
-          sessionEmail={session.user.email}
-        />
-      );
-    }
     return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
+      <InvitationShell>
         <h1 className="text-2xl font-semibold">Invitation not found</h1>
-        <Button asChild className="mt-6">
-          <Link href="/app">Go to app</Link>
-        </Button>
-      </main>
+        <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+          Check the link in your invitation email or ask the sender for a new
+          invitation.
+        </p>
+        <InvitationExit signedIn={Boolean(session?.user)} />
+      </InvitationShell>
     );
   }
 
-  async function accept() {
-    "use server";
-    const workspaceId = await actionAcceptInvitation(token);
-    redirect(`/app/${workspaceId}`);
+  if (!isInvitationActive(invitation)) {
+    return (
+      <InvitationShell>
+        <InvitationHeading invitation={invitation} />
+        <p className="mt-4 text-sm text-[var(--destructive)]">
+          This invitation is no longer valid.
+        </p>
+        <InvitationExit signedIn={Boolean(session?.user)} />
+      </InvitationShell>
+    );
   }
 
-  const emailMismatch =
-    invitation.email.toLowerCase() !== session.user.email.toLowerCase();
-  const expired = invitation.expiresAt.getTime() < new Date().getTime();
-  const inactive = invitation.status !== "pending";
+  const matchingVerifiedSession = Boolean(
+    session?.user.emailVerified &&
+      invitationMatchesEmail(invitation, session.user.email),
+  );
+
+  if (!matchingVerifiedSession) {
+    const account = await getInvitationAccount(invitation.email);
+    return (
+      <InvitationShell>
+        <InvitationHeading invitation={invitation} />
+        <InvitationAuthForm
+          token={invitation.token}
+          email={invitation.email}
+          initialMode={account ? "sign-in" : "register"}
+          currentSessionEmail={session?.user.email}
+          accountVerified={account?.emailVerified}
+        />
+      </InvitationShell>
+    );
+  }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
+    <InvitationShell>
+      <InvitationHeading invitation={invitation} />
+      <p className="mt-6 rounded-md bg-[var(--muted)] px-3 py-2 text-sm">
+        Signed in as {session!.user.email}
+      </p>
+      <AcceptanceForm invitation={invitation} />
+    </InvitationShell>
+  );
+}
+
+function InvitationShell({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6 py-16">
       <BrandLogo
         markClassName="h-8 w-8"
         wordmarkClassName="text-xl"
       />
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight">
-        Join {invitation.workspaceName}
-      </h1>
-      <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-        Invited as {invitation.email}
-      </p>
-
-      {emailMismatch && (
-        <p className="mt-4 text-sm text-[var(--destructive)]">
-          Sign in as {invitation.email} to accept this invitation.
-        </p>
-      )}
-      {(expired || inactive) && (
-        <p className="mt-4 text-sm text-[var(--destructive)]">
-          This invitation is no longer valid.
-        </p>
-      )}
-
-      {!emailMismatch && !expired && !inactive && (
-        <form action={accept} className="mt-8">
-          <Button type="submit">Accept invitation</Button>
-        </form>
-      )}
+      <div className="mt-4">{children}</div>
     </main>
   );
 }
 
-function DocumentInvitationScreen({
-  token,
+function InvitationHeading({
   invitation,
-  sessionEmail,
 }: {
-  token: string;
-  invitation: NonNullable<
-    Awaited<ReturnType<typeof getDocumentInvitationByToken>>
-  >;
-  sessionEmail: string;
+  invitation: InvitationDetails;
+}) {
+  return (
+    <>
+      <h1 className="text-2xl font-semibold tracking-tight">
+        {invitation.kind === "workspace"
+          ? `Join ${invitation.workspaceName}`
+          : `${invitation.inviterName ?? "A teammate"} shared “${
+              invitation.documentTitle || "Untitled"
+            }” with you`}
+      </h1>
+      <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+        Invited as {invitation.email}
+        {invitation.kind === "document" &&
+          ` · ${LEVEL_LABEL[invitation.level] ?? invitation.level}`}
+      </p>
+    </>
+  );
+}
+
+function AcceptanceForm({
+  invitation,
+}: {
+  invitation: InvitationDetails;
 }) {
   async function accept() {
     "use server";
+    if (invitation.kind === "workspace") {
+      const workspaceId = await actionAcceptInvitation(invitation.token);
+      redirect(`/app/${workspaceId}`);
+    }
+
     const { documentId, workspaceId } =
-      await actionAcceptDocumentInvitation(token);
+      await actionAcceptDocumentInvitation(invitation.token);
     redirect(`/app/${workspaceId}/docs/${documentId}`);
   }
 
-  const emailMismatch =
-    invitation.email.toLowerCase() !== sessionEmail.toLowerCase();
-  const expired = invitation.expiresAt.getTime() < new Date().getTime();
-  const inactive = invitation.status !== "pending";
-
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
-      <BrandLogo
-        markClassName="h-8 w-8"
-        wordmarkClassName="text-xl"
-      />
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight">
-        {invitation.inviterName ?? "A teammate"} shared “
-        {invitation.documentTitle || "Untitled"}” with you
-      </h1>
-      <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-        Invited as {invitation.email} ·{" "}
-        {LEVEL_LABEL[invitation.level] ?? invitation.level}
-      </p>
+    <form action={accept} className="mt-6">
+      <Button type="submit" className="w-full">
+        {invitation.kind === "workspace"
+          ? "Accept invitation"
+          : "Open the page"}
+      </Button>
+    </form>
+  );
+}
 
-      {emailMismatch && (
-        <p className="mt-4 text-sm text-[var(--destructive)]">
-          Sign in as {invitation.email} to open this page.
-        </p>
-      )}
-      {(expired || inactive) && (
-        <p className="mt-4 text-sm text-[var(--destructive)]">
-          This invitation is no longer valid.
-        </p>
-      )}
-
-      {!emailMismatch && !expired && !inactive && (
-        <form action={accept} className="mt-8">
-          <Button type="submit">Open the page</Button>
-        </form>
-      )}
-    </main>
+function InvitationExit({ signedIn }: { signedIn: boolean }) {
+  return (
+    <Button asChild className="mt-6">
+      <Link href={signedIn ? "/app" : "/sign-in"}>
+        {signedIn ? "Go to app" : "Go to sign in"}
+      </Link>
+    </Button>
   );
 }

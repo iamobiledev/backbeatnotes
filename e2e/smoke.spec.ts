@@ -11,12 +11,25 @@ test.describe("BackBeat Notes smoke", () => {
     await expect(
       page.getByText(/Keep your team's knowledge in rhythm\./),
     ).toBeVisible();
+    await expect(page.locator('a[href="/sign-up"]')).toHaveCount(0);
   });
 
   test("sign-in page is reachable", async ({ page }) => {
     await page.goto("/sign-in");
     await expect(page.getByRole("heading", { name: /welcome back/i })).toBeVisible();
     await expect(page.getByLabel(/email/i)).toBeVisible();
+    await expect(page.locator('a[href="/sign-up"]')).toHaveCount(0);
+  });
+
+  test("direct sign-up remains functional but unadvertised", async ({
+    page,
+  }) => {
+    await page.goto("/sign-up");
+    await expect(
+      page.getByRole("heading", { name: "Create your account" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Name")).toBeVisible();
+    await expect(page.getByLabel("Password")).toBeVisible();
   });
 
   test("health endpoint responds", async ({ request }) => {

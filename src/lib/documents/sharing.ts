@@ -554,32 +554,6 @@ export async function setGeneralAccess(opts: {
   return updated;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Accepting document invitations                                              */
-/* -------------------------------------------------------------------------- */
-
-export async function getDocumentInvitationByToken(token: string) {
-  const db = getDb();
-  const [invitation] = await db
-    .select({
-      id: documentInvitations.id,
-      email: documentInvitations.email,
-      level: documentInvitations.level,
-      status: documentInvitations.status,
-      expiresAt: documentInvitations.expiresAt,
-      documentId: documentInvitations.documentId,
-      documentTitle: documents.title,
-      workspaceId: documents.workspaceId,
-      inviterName: user.name,
-    })
-    .from(documentInvitations)
-    .innerJoin(documents, eq(documents.id, documentInvitations.documentId))
-    .leftJoin(user, eq(user.id, documentInvitations.invitedById))
-    .where(eq(documentInvitations.token, token))
-    .limit(1);
-  return invitation ?? null;
-}
-
 /** Convert a pending document invitation into a permission row. */
 export async function acceptDocumentInvitation(opts: {
   userId: string;
