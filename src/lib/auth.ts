@@ -23,6 +23,11 @@ export function createAuth() {
     appName: brand.name,
     baseURL: getAppUrl(),
     secret: env.BETTER_AUTH_SECRET,
+    rateLimit: {
+      // Browser suites intentionally create many short-lived sessions from
+      // one loopback IP. Production keeps Better Auth's default protection.
+      enabled: process.env.E2E_DISABLE_AUTH_RATE_LIMIT !== "1",
+    },
     database: drizzleAdapter(db, {
       provider: "pg",
       schema: {

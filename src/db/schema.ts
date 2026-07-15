@@ -305,6 +305,8 @@ export const documents = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    /** Monotonic optimistic-concurrency token for whole-document saves. */
+    revision: integer("revision").notNull().default(0),
     /** Weighted FTS vector — maintained via trigger / application update */
     searchVector: tsvector("search_vector"),
   },

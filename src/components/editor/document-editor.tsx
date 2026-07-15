@@ -80,7 +80,7 @@ export type SaveStatus =
   | "error";
 
 type SaveResult =
-  | { ok: true; updatedAt: string }
+  | { ok: true; revision: number }
   | { ok: false; error: string };
 
 type DocumentEditorProps = {
@@ -88,11 +88,11 @@ type DocumentEditorProps = {
   workspaceId: string;
   initialTitle: string;
   initialContent: Record<string, unknown>;
-  initialUpdatedAt: string;
+  initialRevision: number;
   onSave: (payload: {
     title: string;
     contentJson: string;
-    expectedUpdatedAt: string;
+    expectedRevision: number;
   }) => Promise<SaveResult>;
   readOnly?: boolean;
 };
@@ -113,7 +113,7 @@ export function DocumentEditor({
   workspaceId,
   initialTitle,
   initialContent,
-  initialUpdatedAt,
+  initialRevision,
   onSave,
   readOnly = false,
 }: DocumentEditorProps) {
@@ -131,7 +131,7 @@ export function DocumentEditor({
   const titleRef = useRef(startingTitle);
   const statusRef = useRef<SaveStatus>("saved");
   const lastSavedRef = useRef<string | null>(null);
-  const revisionRef = useRef(initialUpdatedAt);
+  const revisionRef = useRef(initialRevision);
   const retryCountRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveErrorToastRef = useRef<string | number | null>(null);
@@ -144,9 +144,9 @@ export function DocumentEditor({
     if (statusRef.current === "saved") {
       setTitle(startingTitle);
       titleRef.current = startingTitle;
-      revisionRef.current = initialUpdatedAt;
+      revisionRef.current = initialRevision;
     }
-  }, [startingTitle, initialUpdatedAt]);
+  }, [startingTitle, initialRevision]);
   const savingRef = useRef(false);
   const dirtyAgainRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -270,7 +270,7 @@ export function DocumentEditor({
   const performSave = useCallback(
     async (currentEditor: Editor): Promise<SaveResult> => {
       if (readOnly) {
-        return { ok: true, updatedAt: revisionRef.current };
+        return { ok: true, revision: revisionRef.current };
       }
       if (savingRef.current) {
         dirtyAgainRef.current = true;
@@ -288,7 +288,7 @@ export function DocumentEditor({
         applyStatus("saved");
         savingRef.current = false;
         clearDocumentDraft(window.localStorage, documentId);
-        return { ok: true, updatedAt: revisionRef.current };
+        return { ok: true, revision: revisionRef.current };
       }
       writeDocumentDraft(window.localStorage, documentId, {
         baseSignature: lastSavedRef.current ?? signature,
@@ -298,7 +298,7 @@ export function DocumentEditor({
       const payload = {
         title,
         contentJson,
-        expectedUpdatedAt: revisionRef.current,
+        expectedRevision: revisionRef.current,
       };
       let reschedule = false;
       let outcome: SaveResult;
@@ -307,7 +307,7 @@ export function DocumentEditor({
         networkFailureRef.current = false;
         if (result.ok) {
           lastSavedRef.current = signature;
-          revisionRef.current = result.updatedAt;
+          revisionRef.current = result.revision;
           retryCountRef.current = 0;
           if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
           retryTimerRef.current = null;

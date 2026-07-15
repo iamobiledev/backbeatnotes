@@ -17,6 +17,13 @@ export async function GET() {
       SELECT
         to_regclass('public.documents') IS NOT NULL AS core_documents,
         to_regclass('public.workspace_members') IS NOT NULL AS core_memberships,
+        EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'documents'
+            AND column_name = 'revision'
+        ) AS core_revision,
         to_regclass('public.document_search_blocks') IS NOT NULL AS search_blocks,
         EXISTS (
           SELECT 1 FROM pg_extension WHERE extname = 'vector'
@@ -37,13 +44,14 @@ export async function GET() {
     const row = result.rows[0] as {
       core_documents?: boolean;
       core_memberships?: boolean;
+      core_revision?: boolean;
       search_blocks?: boolean;
       search_vector?: boolean;
     };
     database = {
       connected: true,
       coreSchemaReady: Boolean(
-        row.core_documents && row.core_memberships,
+        row.core_documents && row.core_memberships && row.core_revision,
       ),
       searchSchemaReady: Boolean(row.search_blocks && row.search_vector),
     };

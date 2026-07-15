@@ -32,6 +32,13 @@ async function main() {
       to_regclass('public.document_search_blocks')::text AS document_search_blocks,
       to_regclass('drizzle.__drizzle_migrations')::text AS migration_journal,
       EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'documents'
+          AND column_name = 'revision'
+      ) AS has_document_revision,
+      EXISTS (
         SELECT 1 FROM pg_extension WHERE extname = 'vector'
       ) AS has_vector,
       COALESCE(
@@ -53,6 +60,7 @@ async function main() {
     document_versions: string | null;
     document_search_blocks: string | null;
     migration_journal: string | null;
+    has_document_revision: boolean;
     has_vector: boolean;
     indexes: string[] | string;
   };
@@ -65,7 +73,10 @@ async function main() {
   const checks = {
     connected: true,
     coreSchemaReady: Boolean(
-      row.documents && row.workspace_members && row.document_versions,
+      row.documents &&
+        row.workspace_members &&
+        row.document_versions &&
+        row.has_document_revision,
     ),
     searchSchemaReady: Boolean(
       row.document_search_blocks && row.has_vector,

@@ -25,33 +25,33 @@ export function DocumentEditorClient({
   workspaceId,
   initialTitle,
   initialContent,
-  initialUpdatedAt,
+  initialRevision,
   readOnly,
 }: {
   documentId: string;
   workspaceId: string;
   initialTitle: string;
   initialContent: Record<string, unknown>;
-  initialUpdatedAt: string;
+  initialRevision: number;
   readOnly?: boolean;
 }) {
   const onSave = useCallback(
     async (payload: {
       title: string;
       contentJson: string;
-      expectedUpdatedAt: string;
+      expectedRevision: number;
     }): Promise<
-      | { ok: true; updatedAt: string }
+      | { ok: true; revision: number }
       | { ok: false; error: string }
     > => {
       const result = await actionSaveDocument({
         documentId,
         title: payload.title,
         contentJson: payload.contentJson,
-        expectedUpdatedAt: payload.expectedUpdatedAt,
+        expectedRevision: payload.expectedRevision,
       });
       if (result.ok) {
-        return { ok: true, updatedAt: result.data.updatedAt };
+        return { ok: true, revision: result.data.revision };
       }
       return { ok: false, error: result.error };
     },
@@ -64,7 +64,7 @@ export function DocumentEditorClient({
       workspaceId={workspaceId}
       initialTitle={initialTitle}
       initialContent={initialContent}
-      initialUpdatedAt={initialUpdatedAt}
+      initialRevision={initialRevision}
       onSave={onSave}
       readOnly={readOnly}
     />

@@ -82,7 +82,7 @@ export async function syncDocumentSearchBlocks(opts: {
   documentId: string;
   title: string;
   contentJson: Record<string, unknown>;
-  expectedUpdatedAt?: Date;
+  expectedRevision?: number;
 }): Promise<{ blocks: PreparedSearchBlock[]; applied: boolean }> {
   const prepared = prepareDocumentSearchBlocks({
     title: opts.title,
@@ -106,8 +106,8 @@ export async function syncDocumentSearchBlocks(opts: {
       FROM documents
       WHERE id = ${opts.documentId}
         ${
-          opts.expectedUpdatedAt
-            ? sql`AND updated_at = ${opts.expectedUpdatedAt}`
+          opts.expectedRevision !== undefined
+            ? sql`AND revision = ${opts.expectedRevision}`
             : sql``
         }
     ),
@@ -187,12 +187,12 @@ export type DocumentSearchSyncOutcome =
  * Synchronize a derived search index without ever rejecting the canonical
  * document write.
  *
- * `expectedUpdatedAt` and the single guarded statement prevent an older
+ * `expectedRevision` and the single guarded statement prevent an older
  * concurrent autosave from overwriting a newer index generation.
  */
 export async function syncDocumentSearchIndexBestEffort(opts: {
   documentId: string;
-  expectedUpdatedAt: Date;
+  expectedRevision: number;
   title: string;
   contentJson: Record<string, unknown>;
 }): Promise<DocumentSearchSyncOutcome> {
@@ -203,7 +203,7 @@ export async function syncDocumentSearchIndexBestEffort(opts: {
       documentId: opts.documentId,
       title: opts.title,
       contentJson: opts.contentJson,
-      expectedUpdatedAt: opts.expectedUpdatedAt,
+      expectedRevision: opts.expectedRevision,
     });
     if (!result.applied) return { status: "stale" };
     return { status: "synced", blocks: result.blocks.length };

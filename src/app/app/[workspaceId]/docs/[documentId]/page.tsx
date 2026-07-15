@@ -166,7 +166,7 @@ export default async function DocumentPage({
           workspaceId={doc.workspaceId}
           initialTitle={doc.title}
           initialContent={contentJson}
-          initialUpdatedAt={doc.updatedAt.toISOString()}
+          initialRevision={doc.revision}
         />
       )}
     </div>

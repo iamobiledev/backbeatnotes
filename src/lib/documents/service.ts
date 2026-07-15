@@ -68,14 +68,14 @@ async function syncDocumentSearchAfterWrite(doc: {
   id: string;
   title: string;
   contentJson: Record<string, unknown>;
-  updatedAt: Date;
+  revision: number;
 }) {
   const { syncDocumentSearchIndexBestEffort } = await import(
     "@/lib/search/document-blocks"
   );
   const result = await syncDocumentSearchIndexBestEffort({
     documentId: doc.id,
-    expectedUpdatedAt: doc.updatedAt,
+    expectedRevision: doc.revision,
     title: doc.title,
     contentJson: doc.contentJson,
   });
@@ -766,10 +766,10 @@ export async function saveDocumentContent(opts: {
   documentId: string;
   title?: string;
   contentJson: Record<string, unknown>;
-  expectedUpdatedAt: Date;
+  expectedRevision: number;
 }) {
   const existing = await requireEditableDocument(opts.userId, opts.documentId);
-  if (existing.updatedAt.getTime() !== opts.expectedUpdatedAt.getTime()) {
+  if (existing.revision !== opts.expectedRevision) {
     throw new Error("EDIT_CONFLICT");
   }
 
@@ -825,11 +825,12 @@ export async function saveDocumentContent(opts: {
       plainTextContent,
       updatedById: opts.userId,
       updatedAt: new Date(),
+      revision: sql`${documents.revision} + 1`,
     })
     .where(
       and(
         eq(documents.id, existing.id),
-        eq(documents.updatedAt, opts.expectedUpdatedAt),
+        eq(documents.revision, opts.expectedRevision),
       ),
     )
     .returning();
@@ -905,7 +906,12 @@ export async function renameDocument(opts: {
   const db = getDb();
   const [updated] = await db
     .update(documents)
-    .set({ title, updatedById: opts.userId, updatedAt: new Date() })
+    .set({
+      title,
+      updatedById: opts.userId,
+      updatedAt: new Date(),
+      revision: sql`${documents.revision} + 1`,
+    })
     .where(eq(documents.id, existing.id))
     .returning();
   await syncDocumentSearchAfterWrite(updated);
@@ -1354,6 +1360,7 @@ export async function restoreDocumentVersion(opts: {
       plainTextContent: extractPlainText(restoredContent),
       updatedById: opts.userId,
       updatedAt: new Date(),
+      revision: sql`${documents.revision} + 1`,
     })
     .where(eq(documents.id, existing.id))
     .returning();

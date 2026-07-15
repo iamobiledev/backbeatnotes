@@ -364,18 +364,17 @@ export async function actionSaveDocument(input: {
   documentId: string;
   title: string;
   contentJson: string;
-  expectedUpdatedAt: string;
-}): Promise<ActionResult<{ id: string; updatedAt: string }>> {
+  expectedRevision: number;
+}): Promise<
+  ActionResult<{ id: string; updatedAt: string; revision: number }>
+> {
   const session = await requireVerifiedSession();
   return run(async () => {
     const parsed = z
       .object({
         documentId: z.string().min(1),
         title: z.string().min(1).max(500),
-        expectedUpdatedAt: z
-          .string()
-          .datetime({ offset: true })
-          .transform((value) => new Date(value)),
+        expectedRevision: z.number().int().nonnegative(),
         contentJson: z
           .string()
           .min(2)
@@ -403,11 +402,15 @@ export async function actionSaveDocument(input: {
           documentId: parsed.documentId,
           title: parsed.title,
           contentJson: parsed.contentJson,
-          expectedUpdatedAt: parsed.expectedUpdatedAt,
+          expectedRevision: parsed.expectedRevision,
         }),
       { documentId: parsed.documentId },
     );
-    return { id: doc.id, updatedAt: doc.updatedAt.toISOString() };
+    return {
+      id: doc.id,
+      updatedAt: doc.updatedAt.toISOString(),
+      revision: doc.revision,
+    };
   });
 }
 
