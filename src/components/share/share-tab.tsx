@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Check, ChevronDown, Lock, Users } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Lock, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar } from "@/components/ui/avatar";
@@ -50,6 +50,7 @@ export function ShareTab({
   sharing,
   onChanged,
   slack,
+  emailDelivery,
 }: {
   doc: { id: string; workspaceId: string; title: string };
   workspace: {
@@ -61,6 +62,7 @@ export function ShareTab({
   sharing: DocumentSharing | null;
   onChanged: () => Promise<void>;
   slack: { configured: boolean; connected: boolean; teamName: string | null };
+  emailDelivery: "resend" | "console-only";
 }) {
   const [inviteInput, setInviteInput] = useState("");
   const [inviteLevel, setInviteLevel] =
@@ -187,6 +189,16 @@ export function ShareTab({
       )}
       {inviteError && (
         <p className="mt-1.5 text-xs text-[var(--destructive)]">{inviteError}</p>
+      )}
+      {canShare && emailDelivery === "console-only" && (
+        <div className="mt-2 flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs leading-5 text-amber-900">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <p>
+            Email delivery is console-only. Access changes still apply, but
+            invite emails won’t be delivered until RESEND_API_KEY and
+            EMAIL_FROM are configured.
+          </p>
+        </div>
       )}
 
       {/* People with access */}

@@ -9,26 +9,68 @@ import { logger } from "@/lib/logger";
 
 let cached: EmailProvider | null = null;
 
-/** Which provider the current configuration resolves to (no secrets). */
-export function getEmailProviderName(): "resend" | "console" {
+export type EmailDelivery = "resend" | "console-only";
+export type EmailProviderName = "resend" | "console";
+
+export type EmailDeliveryStatus = {
+  provider: EmailProviderName;
+  delivery: EmailDelivery;
+  configured: boolean;
+  missing: Array<"RESEND_API_KEY" | "EMAIL_FROM">;
+};
+
+/**
+ * Resolve outbound email delivery from environment-like values without
+ * exposing secrets. Shared by runtime code, health checks, and tests.
+ */
+export function resolveEmailDeliveryStatus(env: {
+  RESEND_API_KEY?: string | null;
+  EMAIL_FROM?: string | null;
+}): EmailDeliveryStatus {
+  const missing: EmailDeliveryStatus["missing"] = [];
+  if (!env.RESEND_API_KEY) missing.push("RESEND_API_KEY");
+  if (!env.EMAIL_FROM) missing.push("EMAIL_FROM");
+
+  const configured = missing.length === 0;
+  return {
+    provider: configured ? "resend" : "console",
+    delivery: configured ? "resend" : "console-only",
+    configured,
+    missing,
+  };
+}
+
+/** Secret-free status for the current server runtime. */
+export function getEmailDeliveryStatus(): EmailDeliveryStatus {
   const env = getServerEnv();
-  return env.RESEND_API_KEY && env.EMAIL_FROM ? "resend" : "console";
+  return resolveEmailDeliveryStatus({
+    RESEND_API_KEY: env.RESEND_API_KEY,
+    EMAIL_FROM: env.EMAIL_FROM,
+  });
+}
+
+/** Which provider the current configuration resolves to (no secrets). */
+export function getEmailProviderName(): EmailProviderName {
+  return getEmailDeliveryStatus().provider;
 }
 
 export function getEmailProvider(): EmailProvider {
   if (cached) return cached;
 
   const env = getServerEnv();
-  if (env.RESEND_API_KEY && env.EMAIL_FROM) {
-    cached = new ResendEmailProvider(env.RESEND_API_KEY, env.EMAIL_FROM);
+  const status = resolveEmailDeliveryStatus({
+    RESEND_API_KEY: env.RESEND_API_KEY,
+    EMAIL_FROM: env.EMAIL_FROM,
+  });
+  if (status.provider === "resend") {
+    cached = new ResendEmailProvider(env.RESEND_API_KEY!, env.EMAIL_FROM!);
   } else {
     // Local-friendly fallback: emails are logged, never delivered. Make
     // this loud in production so misconfiguration is easy to spot.
     if (process.env.NODE_ENV === "production") {
       logger.warn("email.not_configured", {
         hint: "Set RESEND_API_KEY and EMAIL_FROM — emails are only being logged to the console, not delivered.",
-        hasResendApiKey: Boolean(env.RESEND_API_KEY),
-        hasEmailFrom: Boolean(env.EMAIL_FROM),
+        missing: status.missing,
       });
     }
     cached = new ConsoleEmailProvider();

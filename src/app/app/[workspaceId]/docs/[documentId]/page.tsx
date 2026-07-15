@@ -13,6 +13,7 @@ import {
 } from "@/lib/documents/service";
 import { getWorkspaceById } from "@/lib/workspaces/service";
 import { getSlackStatus } from "@/lib/slack/status";
+import { getEmailDeliveryStatus } from "@/lib/email";
 import {
   canEdit as accessCanEdit,
   canManageWikiLock,
@@ -33,6 +34,7 @@ export default async function DocumentPage({
   const { workspaceId, documentId } = await params;
   const session = await requireVerifiedSession();
   const result = await getDocumentWithAccess(session.user.id, documentId);
+  const emailDelivery = getEmailDeliveryStatus().delivery;
 
   if (!result) {
     return (
@@ -134,6 +136,7 @@ export default async function DocumentPage({
           favorited={favorited}
           canEdit={editable}
           slack={slack}
+          emailDelivery={emailDelivery}
         />
       )}
 

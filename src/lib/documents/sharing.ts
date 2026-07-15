@@ -23,6 +23,7 @@ import { recordDocumentActivity } from "./activity";
 import {
   sendDocumentSharedEmail,
   sendDocumentInvitationEmail,
+  getEmailProviderName,
 } from "@/lib/email";
 import { getAppUrl } from "@/env/server";
 import { logger } from "@/lib/logger";
@@ -375,6 +376,12 @@ export async function shareDocument(opts: {
       documentId: doc.id,
       count: sharedWith.length,
       level: opts.level,
+    });
+    logger.info("document_share.email_scheduled", {
+      documentId: doc.id,
+      provider: getEmailProviderName(),
+      existingUserEmailCount: sharedEmails.length,
+      invitationEmailCount: invitedEmails.length,
     });
 
     after(async () => {

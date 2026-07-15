@@ -63,6 +63,7 @@ export type DocHeaderProps = {
     connected: boolean;
     teamName: string | null;
   };
+  emailDelivery: "resend" | "console-only";
 };
 
 export function DocHeader({
@@ -74,6 +75,7 @@ export function DocHeader({
   favorited,
   canEdit,
   slack,
+  emailDelivery,
 }: DocHeaderProps) {
   const router = useRouter();
   const [isFavorited, setIsFavorited] = useState(favorited);
@@ -198,6 +200,7 @@ export function DocHeader({
           workspace={workspace}
           canEdit={canEdit}
           slack={slack}
+          emailDelivery={emailDelivery}
         />
 
         <Button

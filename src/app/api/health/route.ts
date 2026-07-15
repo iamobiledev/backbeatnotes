@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
+import { resolveEmailDeliveryStatus } from "@/lib/email";
 
 /**
  * Post-deployment health check — does not expose secrets or DB credentials.
  */
 export async function GET() {
+  const email = resolveEmailDeliveryStatus({
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    EMAIL_FROM: process.env.EMAIL_FROM,
+  });
   let database: {
     connected: boolean;
     coreSchemaReady: boolean;
@@ -87,11 +92,9 @@ export async function GET() {
       hasBlobToken: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
       hasResend: Boolean(process.env.RESEND_API_KEY),
       hasEmailFrom: Boolean(process.env.EMAIL_FROM),
-      /** "resend" = real delivery; "console" = emails only logged, not sent. */
-      emailDelivery:
-        process.env.RESEND_API_KEY && process.env.EMAIL_FROM
-          ? "resend"
-          : "console-only",
+      /** "resend" = real delivery; "console-only" = logged, not sent. */
+      emailDelivery: email.delivery,
+      emailDeliveryMissing: email.missing,
       vercelEnv: process.env.VERCEL_ENV ?? "unknown",
       functionRegion: process.env.VERCEL_REGION ?? "unknown",
       databaseRegion: process.env.NEON_REGION ?? "unknown",

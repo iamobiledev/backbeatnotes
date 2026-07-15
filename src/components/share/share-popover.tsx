@@ -39,6 +39,7 @@ export type SharePopoverProps = {
     connected: boolean;
     teamName: string | null;
   };
+  emailDelivery: "resend" | "console-only";
 };
 
 /**
@@ -46,7 +47,13 @@ export type SharePopoverProps = {
  * Share | Publish tabs, invite-by-email with per-person access levels,
  * General access, and a Copy link footer.
  */
-export function SharePopover({ doc, workspace, canEdit, slack }: SharePopoverProps) {
+export function SharePopover({
+  doc,
+  workspace,
+  canEdit,
+  slack,
+  emailDelivery,
+}: SharePopoverProps) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"share" | "publish">("share");
   const [sharing, setSharing] = useState<DocumentSharing | null>(null);
@@ -131,6 +138,7 @@ export function SharePopover({ doc, workspace, canEdit, slack }: SharePopoverPro
               sharing={sharing}
               onChanged={refresh}
               slack={slack}
+              emailDelivery={emailDelivery}
             />
 
             {/* Footer */}

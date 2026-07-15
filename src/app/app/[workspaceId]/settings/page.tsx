@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { BookLock } from "lucide-react";
+import { AlertTriangle, BookLock } from "lucide-react";
 import { requireVerifiedSession } from "@/lib/session";
 import { listUserWorkspaces } from "@/lib/documents/service";
 import {
@@ -11,6 +11,7 @@ import {
   getConnectionForWorkspace,
   getUserSlackLinks,
 } from "@/lib/slack/service";
+import { getEmailDeliveryStatus } from "@/lib/email";
 import { MembersSection } from "./members-section";
 import { WorkspaceNameSection } from "./workspace-name-section";
 import { NotificationsSection } from "./notifications-section";
@@ -30,6 +31,7 @@ export default async function WorkspaceSettingsPage({
   if (!workspace) notFound();
 
   const isAdmin = workspace.role === "owner" || workspace.role === "admin";
+  const emailDelivery = getEmailDeliveryStatus();
 
   const [members, invitations, slack] = await Promise.all([
     workspace.isPersonal
@@ -66,6 +68,20 @@ export default async function WorkspaceSettingsPage({
           {workspace.name}
         </p>
       </div>
+
+      {isAdmin && emailDelivery.delivery === "console-only" && (
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950">
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <AlertTriangle className="h-4 w-4" />
+            Email delivery is not configured
+          </h2>
+          <p className="mt-1 text-sm leading-6">
+            Invitations and page-share notifications are being logged only, not
+            sent to inboxes. Add RESEND_API_KEY and EMAIL_FROM in Vercel, then
+            redeploy to enable Resend delivery.
+          </p>
+        </section>
+      )}
 
       {workspace.isPersonal ? (
         <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-5">
