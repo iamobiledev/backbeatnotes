@@ -79,10 +79,6 @@ export default function SignInPage() {
         <Link href="/forgot-password" className="underline">
           Forgot password?
         </Link>
-        {" · "}
-        <Link href="/sign-up" className="underline">
-          Create an account
-        </Link>
       </p>
     </main>
   );

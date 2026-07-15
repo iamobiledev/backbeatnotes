@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import { brand } from "@/config/brand";
 import { BrandLogo } from "@/components/brand/brand-logo";
 import { Button } from "@/components/ui/button";
@@ -53,9 +52,6 @@ export default function HomePage() {
           <Button asChild variant="ghost" size="sm">
             <Link href="/sign-in">Log in</Link>
           </Button>
-          <Button asChild size="sm">
-            <Link href="/sign-up">Get {brand.name} free</Link>
-          </Button>
         </nav>
       </header>
 
@@ -70,13 +66,7 @@ export default function HomePage() {
           across your workspace.
         </p>
         <div className="animate-rise animate-delay-2 mt-8 flex flex-wrap items-center justify-center gap-3">
-          <Button asChild size="lg" className="gap-1.5">
-            <Link href="/sign-up">
-              Get {brand.name} free
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </Button>
-          <Button asChild size="lg" variant="outline">
+          <Button asChild size="lg">
             <Link href="/sign-in">Log in</Link>
           </Button>
         </div>
