@@ -61,8 +61,14 @@ async function main() {
         const refreshed = await refreshDocumentBlockEmbeddings(doc.id);
         totals.embeddingsAttempted += refreshed.attempted;
         totals.embeddingsUpdated += refreshed.updated;
-      } catch {
+      } catch (error) {
         totals.failures++;
+        console.error(
+          JSON.stringify({
+            documentId: doc.id,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
       }
     }
   };

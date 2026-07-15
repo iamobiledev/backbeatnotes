@@ -30,7 +30,9 @@ function isEmbedding(value: unknown): value is number[] {
 }
 
 export function isOpenAIEmbeddingsConfigured(): boolean {
-  return Boolean(getServerEnv().OPENAI_API_KEY);
+  // Keep backfills and schema maintenance independent from unrelated auth/app
+  // variables. Full environment validation still occurs before an API call.
+  return Boolean(process.env.OPENAI_API_KEY);
 }
 
 /**

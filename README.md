@@ -72,6 +72,7 @@ sudo -u postgres psql -d docloom -c "CREATE EXTENSION pg_trgm; CREATE EXTENSION 
 | `pnpm check` | lint + typecheck + unit tests |
 | `pnpm db:generate` | Generate Drizzle migrations from schema |
 | `pnpm db:migrate` | **Intentional** migration runner (not on every deploy) |
+| `pnpm db:check` | Verify migrations, extensions, and workload indexes |
 | `pnpm db:seed` | Local development seed |
 | `pnpm db:studio` | Drizzle Studio |
 
@@ -292,6 +293,26 @@ recent, and trashed page lists plus invitation and activity-coalescing indexes.
 Apply it before deploying this code. Index creation increases migration-time
 I/O but does not change data. A rollback can safely `DROP INDEX` the seven
 indexes declared in that migration; rolling forward is preferred.
+
+Document paragraph indexing is derived data: canonical page content and
+Postgres full-text fields save first, while optional embeddings run after the
+response. A missing `document_search_blocks` migration degrades paragraph
+anchors/semantic search but must never prevent creating or saving a page.
+Deployments should still treat degraded search as unready:
+
+```bash
+# Safe rollout order
+pnpm db:migrate
+pnpm db:check
+pnpm search:backfill
+curl --fail https://your-deployment.vercel.app/api/health
+```
+
+`db:check` exits non-zero when migrations 0006/0007, pgvector, or their
+required indexes are missing. `/api/health` returns 503 with secret-free
+schema readiness details when the database is unavailable or incomplete.
+During rollback, keep the newer schema in place; migrations are additive and
+older application versions safely ignore these tables/indexes.
 
 `VERCEL_REGION=iad1` and a Neon `aws-us-east-1` primary describe the same
 geography with provider-specific names. `/api/health` reports both
