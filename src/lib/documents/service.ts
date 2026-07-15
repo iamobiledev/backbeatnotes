@@ -260,8 +260,16 @@ export async function listWorkspaceDocuments(
       lockedAt: documents.lockedAt,
       updatedAt: documents.updatedAt,
       createdById: documents.createdById,
+      updatedByName: user.name,
     })
     .from(documents)
+    .leftJoin(
+      user,
+      eq(
+        user.id,
+        sql`coalesce(${documents.updatedById}, ${documents.createdById})`,
+      ),
+    )
     .where(
       and(
         eq(documents.workspaceId, workspaceId),
@@ -291,6 +299,7 @@ export async function listWorkspaceDocumentTree(
       locked: row.lockedAt !== null,
       updatedAt: row.updatedAt,
       createdById: row.createdById,
+      updatedByName: row.updatedByName,
       children: [],
     });
   }
@@ -334,6 +343,7 @@ export async function listWorkspaceDocumentTrees(
           lockedAt: documents.lockedAt,
           updatedAt: documents.updatedAt,
           createdById: documents.createdById,
+          updatedByName: user.name,
         })
         .from(documents)
         .innerJoin(
@@ -341,6 +351,13 @@ export async function listWorkspaceDocumentTrees(
           and(
             eq(workspaceMembers.workspaceId, documents.workspaceId),
             eq(workspaceMembers.userId, userId),
+          ),
+        )
+        .leftJoin(
+          user,
+          eq(
+            user.id,
+            sql`coalesce(${documents.updatedById}, ${documents.createdById})`,
           ),
         )
         .where(
@@ -375,6 +392,7 @@ export async function listWorkspaceDocumentTrees(
         locked: row.lockedAt !== null,
         updatedAt: row.updatedAt,
         createdById: row.createdById,
+        updatedByName: row.updatedByName,
         children: [],
       });
     }

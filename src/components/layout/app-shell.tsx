@@ -50,9 +50,11 @@ import { useTheme, type ThemePreference } from "@/components/theme/theme";
 import {
   actionCreateDocument,
   actionListWorkspaceTree,
+  actionMoveDocument,
 } from "@/app/actions";
 import type { DocumentTreeNode, WorkspaceSummary } from "@/lib/documents/types";
 import { DocumentTree } from "./document-tree";
+import { DROP_TARGET_CLASS, useRootDropTarget } from "./tree-dnd";
 
 const CommandPalette = dynamic(() =>
   import("@/components/search/command-palette").then(
@@ -310,6 +312,9 @@ export function AppShell({
             adding={creating}
             onAddPage={() => createPage(undefined, "doc", personal.id)}
             onAddWiki={() => createPage(undefined, "wiki", personal.id)}
+            dropWorkspaceId={personal.id}
+            canDrop={personal.role !== "guest"}
+            onMoved={() => router.refresh()}
           >
             {personalTree.length === 0 ? (
               <p className="px-2 py-1 text-[var(--muted-foreground)]">
@@ -321,9 +326,12 @@ export function AppShell({
                 workspaceId={personal.id}
                 activePath={pathname ?? ""}
                 favoriteIds={favoriteIdSet}
+                canEdit={personal.role !== "guest"}
+                rootLabel="Private"
                 onCreateChild={(parentId) =>
                   createPage(parentId, "doc", personal.id)
                 }
+                onMoved={() => router.refresh()}
               />
             )}
           </SidebarSection>
@@ -531,6 +539,40 @@ function AppearancePicker() {
   );
 }
 
+/**
+ * Root drop zone behavior: dropping a dragged page on a section header (or
+ * teamspace row) moves it back to the top level of that workspace.
+ */
+function useMoveToRoot({
+  workspaceId,
+  enabled,
+  onMoved,
+}: {
+  workspaceId: string;
+  enabled: boolean;
+  onMoved: () => void;
+}) {
+  const [, startMove] = useTransition();
+  return useRootDropTarget({
+    workspaceId,
+    enabled,
+    onDropDocument: (documentId) => {
+      startMove(async () => {
+        const result = await actionMoveDocument({
+          documentId,
+          newParentId: null,
+        });
+        if (result.ok) {
+          toast.success("Moved to top level");
+          onMoved();
+        } else {
+          toast.error(result.error);
+        }
+      });
+    },
+  });
+}
+
 /** Section header with a hover-reveal "+" (new page / new wiki) menu. */
 function SidebarSection({
   label,
@@ -538,6 +580,9 @@ function SidebarSection({
   adding,
   onAddPage,
   onAddWiki,
+  dropWorkspaceId,
+  canDrop = false,
+  onMoved,
   children,
 }: {
   label: string;
@@ -545,11 +590,25 @@ function SidebarSection({
   adding?: boolean;
   onAddPage: () => void;
   onAddWiki: () => void;
+  /** When set, the header accepts page drops (move to top level). */
+  dropWorkspaceId?: string;
+  canDrop?: boolean;
+  onMoved?: () => void;
   children: React.ReactNode;
 }) {
+  const { isDropTarget, dropProps } = useMoveToRoot({
+    workspaceId: dropWorkspaceId ?? "",
+    enabled: Boolean(dropWorkspaceId) && canDrop,
+    onMoved: onMoved ?? (() => {}),
+  });
   return (
     <div className="group/section">
-      <div className="mb-0.5 flex items-center justify-between px-2 py-1">
+      <div
+        {...dropProps}
+        className={`mb-0.5 flex items-center justify-between rounded-md px-2 py-1 ${
+          isDropTarget ? DROP_TARGET_CLASS : ""
+        }`}
+      >
         <p className="text-xs font-medium text-[var(--muted-foreground)]">
           {label}
         </p>
@@ -601,6 +660,7 @@ function TeamspaceItem({
   creating: boolean;
   onCreatePage: (parentId?: string, docType?: "doc" | "wiki") => void;
 }) {
+  const router = useRouter();
   // The active teamspace starts expanded; the rest start collapsed.
   const [expanded, setExpanded] = useState(isCurrent);
   const [loadedNodes, setLoadedNodes] = useState<
@@ -623,14 +683,39 @@ function TeamspaceItem({
     });
   };
 
+  // After a page moved: lazily-loaded trees must be refetched by hand —
+  // router.refresh() only updates the server-rendered (preloaded) trees.
+  const handleMoved = useCallback(() => {
+    if (initialNodes === undefined) {
+      startTreeLoad(async () => {
+        const result = await actionListWorkspaceTree({
+          workspaceId: workspace.id,
+        });
+        if (result.ok) setLoadedNodes(result.data);
+      });
+    }
+    router.refresh();
+  }, [initialNodes, router, workspace.id]);
+
+  // Dropping a page on the teamspace row moves it to the top level.
+  const { isDropTarget, dropProps } = useMoveToRoot({
+    workspaceId: workspace.id,
+    enabled: canEdit,
+    onMoved: () => {
+      setExpanded(true);
+      handleMoved();
+    },
+  });
+
   return (
     <li>
       <div
+        {...dropProps}
         className={`group/ts flex items-center rounded-md pr-1 transition-colors hover:bg-[var(--sidebar-hover)] ${
           isCurrent && pathname === `/app/${workspace.id}`
             ? "bg-[var(--sidebar-active)]"
             : ""
-        }`}
+        } ${isDropTarget ? DROP_TARGET_CLASS : ""}`}
       >
         {/* Avatar swaps to a chevron on hover, like Notion. */}
         <button
@@ -694,9 +779,12 @@ function TeamspaceItem({
               workspaceId={workspace.id}
               activePath={pathname}
               favoriteIds={favoriteIds}
+              canEdit={canEdit}
+              rootLabel={workspace.name}
               onCreateChild={
                 canEdit ? (parentId) => onCreatePage(parentId) : undefined
               }
+              onMoved={handleMoved}
             />
           )}
           {canEdit && (

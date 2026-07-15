@@ -14,7 +14,9 @@ vi.mock("@/app/actions", () => ({
   actionResendInvitation: vi.fn(),
 }));
 
-const formatDistanceToNow = vi.fn(() => "less than a minute ago");
+const formatDistanceToNow = vi.fn(
+  (..._args: unknown[]): string => "less than a minute ago",
+);
 
 vi.mock("date-fns", async () => {
   const actual = await vi.importActual<typeof import("date-fns")>("date-fns");

@@ -14,6 +14,8 @@ export type DocumentTreeNode = {
   locked: boolean;
   updatedAt: Date;
   createdById: string;
+  /** Display name of the last editor (falls back to the creator). */
+  updatedByName: string | null;
   children: DocumentTreeNode[];
 };
 
