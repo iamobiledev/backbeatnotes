@@ -4,7 +4,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { sql } from "drizzle-orm";
 import { getDb, user, session, account, verification } from "@/db";
-import { getAppUrl, getServerEnv } from "@/env/server";
+import { getAppUrl, getAuthAllowedHosts, getServerEnv } from "@/env/server";
 import {
   sendPasswordResetEmail,
   sendVerificationEmail,
@@ -18,10 +18,18 @@ import { brand } from "@/config/brand";
 export function createAuth() {
   const env = getServerEnv();
   const db = getDb();
+  const fallbackUrl = getAppUrl();
 
   return betterAuth({
     appName: brand.name,
-    baseURL: getAppUrl(),
+    // Resolve the request host against an allowlist so custom domains and
+    // Vercel aliases (e.g. backbeatnotes.com + *.vercel.app) all work.
+    // `fallback` covers direct `auth.api` calls without request headers.
+    baseURL: {
+      allowedHosts: getAuthAllowedHosts(),
+      fallback: fallbackUrl,
+      protocol: process.env.NODE_ENV === "development" ? "http" : "https",
+    },
     secret: env.BETTER_AUTH_SECRET,
     rateLimit: {
       // Browser suites intentionally create many short-lived sessions from
@@ -98,7 +106,8 @@ export function createAuth() {
       },
     },
     plugins: [nextCookies()],
-    trustedOrigins: [getAppUrl()],
+    // allowedHosts (via dynamic baseURL) + BETTER_AUTH_TRUSTED_ORIGINS env
+    // are merged into trustedOrigins by Better Auth automatically.
   });
 }
 
