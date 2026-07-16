@@ -6,29 +6,34 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Cursor Cloud specific instructions
 
-Standard commands live in `package.json` scripts and `README.md`; the notes below only cover the non-obvious local-DB setup.
+Standard commands live in `package.json` scripts and `README.md`; the notes below only cover the non-obvious local setup. The update script only runs `pnpm install`; Postgres (with data + extensions) and the `.env` files are baked into the VM snapshot, so on a fresh VM you just (re)start services.
 
-### The database only speaks the Neon HTTP protocol
-The app connects to Postgres exclusively through `@neondatabase/serverless` (`neon()` HTTP driver) — there is no TCP/`pg` path in app code. Local dev therefore needs a local Postgres **plus** a tiny Neon-HTTP proxy in front of it:
+### Local DB uses plain Postgres via the `node-postgres` driver (no Neon proxy)
+`src/db/create-db.ts` auto-selects the `node-postgres` driver whenever `DATABASE_URL`'s host is local/loopback (`localhost`, `127.0.0.1`, `*.local`, `*.internal`) — the Neon HTTP driver is only used for real Neon hosts. So local dev needs **only** a plain local Postgres; the Neon-HTTP proxy in `scripts/dev-neon-proxy.mjs` is not used here. See README "No Neon account needed for local dev".
 
-- `scripts/dev-neon-proxy.mjs` (dev-only, never imported by the app) implements the Neon "SQL over HTTP" protocol on top of local Postgres via `pg`.
-- With `DATABASE_URL` host `db.localtest.me`, the driver's default `fetchEndpoint` resolves to `https://api.localtest.me/sql`, so the proxy serves HTTPS on port **443**. `*.localtest.me` resolves to loopback via public DNS.
-- The proxy uses a self-signed cert (auto-generated at `~/.docloom-dev/certs/`). Node trusts it via `NODE_EXTRA_CA_CERTS`, which is exported in `~/.bashrc`. Any process that hits the DB (`pnpm dev`, `pnpm db:migrate`, `pnpm db:seed`, `pnpm test:e2e`) must inherit that env var — start them from a login shell.
-- `node` was granted `cap_net_bind_service` so the proxy can bind 443 without root.
+- Cluster: PostgreSQL 16 (`sudo pg_ctlcluster 16 main start`), database `main`, role/password `postgres`/`postgres`, listening on `localhost:5432`.
+- Required extensions (already created in `main`): `pg_trgm`, `unaccent`, and `vector` (pgvector, `postgresql-16-pgvector`). `pnpm db:check` fails if `vector` or the workload indexes are missing.
 
 ### Start services (not done by the update script)
-These are already installed/configured; on a fresh VM just (re)start them:
 ```bash
-sudo pg_ctlcluster 16 main start                     # local Postgres (db "main", user/pass postgres/postgres, pg_trgm enabled)
-node scripts/dev-neon-proxy.mjs                        # Neon HTTP proxy on https://api.localtest.me:443/sql (run in background)
-pnpm dev                                               # Next.js dev server on :3000
+sudo pg_ctlcluster 16 main start   # local Postgres (db "main", user/pass postgres/postgres)
+pnpm dev                           # Next.js dev server on :3000
 ```
-If the proxy or DB is down you'll see `Error connecting to database` / TLS errors from the serverless driver.
+Then `curl -s localhost:3000/api/health` should report `"status":"ready"` with `database.connected:true`.
 
 ### Env files
-Both `.env` and `.env.local` are needed and are git-ignored: the `tsx` scripts (`db:migrate`, `db:seed`) load `.env` via `dotenv`, while Next.js loads `.env.local`. They contain identical local values (`DATABASE_URL=postgresql://postgres:postgres@db.localtest.me/main`, a `BETTER_AUTH_SECRET`, `NEXT_PUBLIC_APP_URL`, `E2E_HAS_DATABASE=1`). Recreate from `.env.example` if missing.
+Both `.env` and `.env.local` are needed and are git-ignored: the `tsx` scripts (`db:migrate`, `db:seed`, `db:check`) load `.env` via `dotenv`, while Next.js loads `.env.local`. They hold identical local values — `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/main`, a 32+ char `BETTER_AUTH_SECRET`, `NEXT_PUBLIC_APP_URL=http://localhost:3000`, `E2E_HAS_DATABASE=1`. Recreate both from these values if missing (generate a secret with `openssl rand -base64 32`). Restart `pnpm dev` after editing them — the DB client is memoized per process.
+
+### Migrations & seed
+Intentional (not on deploy): `pnpm db:migrate`, then `pnpm db:seed`. Seed login: `demo@backbeatnotes.local` / `BackBeatNotesDemo123!` (platform admin, pre-verified — email/password sign-in requires a verified user). A second user `teammate@backbeatnotes.local` (same password) has no workspace membership, for permission testing.
+
+### Tests
+- Unit tests need no DB: `pnpm test` (also `pnpm lint`, `pnpm typecheck`, or all three via `pnpm check`).
+- Playwright e2e reuses an already-running dev server: `E2E_HAS_DATABASE=1 E2E_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/main PLAYWRIGHT_BASE_URL=http://localhost:3000 pnpm test:e2e`. Non-obvious gotchas:
+  - Some specs read the DB directly via the `psql` CLI and have **mismatched** hard-coded default URLs (one defaults to `.../main`, another to `.../docloom`), so you **must** set `E2E_DATABASE_URL` to the real connection string or those specs fail with `psql` connection errors.
+  - Sign-in is rate-limited; the parallel suite trips HTTP 429 unless the **dev server** is started with `E2E_DISABLE_AUTH_RATE_LIMIT=1` (i.e. `E2E_DISABLE_AUTH_RATE_LIMIT=1 pnpm dev`). This flag is read server-side, so it must be on the server process, not the Playwright process.
+  - `playwright install chromium` is required once (cached in the snapshot).
+  - `e2e/performance.spec.ts`'s static-asset transfer-size budget is written for a production build and **is expected to fail against the dev server** (unminified/uncompressed dev bundles). Everything else in the suite passes.
 
 ### Other notes
-- Migrations are intentional (not on deploy): `pnpm db:migrate`, then `pnpm db:seed`. Seed login: `demo@backbeatnotes.local` / `BackBeatNotesDemo123!` (pre-verified; email/password sign-in requires a verified user).
 - `RESEND_API_KEY`/`BLOB_READ_WRITE_TOKEN` are unset locally — email logs to the console and Blob uploads are disabled; both are fine for most dev work.
-- `pnpm test:e2e` reuses an already-running dev server on `:3000`; set `E2E_HAS_DATABASE=1` for the DB-dependent smoke test.
