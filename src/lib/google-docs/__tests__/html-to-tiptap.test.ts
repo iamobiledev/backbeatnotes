@@ -91,4 +91,20 @@ describe("htmlToTiptap", () => {
     });
     expect(content[1]?.type).toBe("codeBlock");
   });
+
+  it("extracts content from a full HTML document wrapper", () => {
+    const json = htmlToTiptap(
+      `<!DOCTYPE html><html><body><h1>Wrapped</h1><table><tr><td>A</td><td>B</td></tr></table></body></html>`,
+    );
+    const content = json.content as Array<{
+      type: string;
+      content?: Array<{ text?: string }>;
+    }>;
+    expect(content[0]?.type).toBe("heading");
+    expect(
+      content.some((n) =>
+        n.content?.some((c) => c.text?.includes("A · B")),
+      ),
+    ).toBe(true);
+  });
 });

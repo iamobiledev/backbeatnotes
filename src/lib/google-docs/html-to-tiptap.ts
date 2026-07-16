@@ -390,6 +390,14 @@ function convertBlock(
   return para.content && para.content.length > 0 ? [para] : [];
 }
 
+function extractBodyHtml(html: string): string {
+  const trimmed = html.trim();
+  // Prefer the innermost body contents when given a full document.
+  const match = trimmed.match(/<body\b[^>]*>([\s\S]*)<\/body>/i);
+  if (match?.[1] != null) return match[1];
+  return trimmed;
+}
+
 /**
  * Convert Google Docs (or similar) HTML into TipTap/ProseMirror JSON.
  */
@@ -397,7 +405,10 @@ export function htmlToTiptap(
   html: string,
   opts: HtmlToTiptapOptions = {},
 ): Record<string, unknown> {
-  const { document } = parseHTML(`<!DOCTYPE html><html><body>${html}</body></html>`);
+  const fragment = extractBodyHtml(html);
+  const { document } = parseHTML(
+    `<!DOCTYPE html><html><body>${fragment}</body></html>`,
+  );
   const body = document.body;
   const content: JsonNode[] = [];
 
