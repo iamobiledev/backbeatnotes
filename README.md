@@ -14,6 +14,7 @@ BackBeat Notes is a Vercel-first collaborative knowledge base built with Next.js
 - **User types** — platform `admin` (creates team workspaces, locks/edits locked wikis) and `developer` (regular user). The first registered user automatically becomes an admin.
 - **Email notifications** — invitation emails, "you've joined a workspace" + "your invite was accepted" emails, and document-activity alerts to a page's creator and previous editors (throttled to one email per person per page per 6 hours, per-user opt-out in Settings → Notifications). Pending invitations show when the email was sent, with one-click resend.
 - **Search** — fast Postgres full-text + trigram search with weighted ranking (exact title → prefix → fuzzy → body → recency), a global **⌘K / Ctrl+K** palette with highlighted snippets and owner/date/scope filters, permission-filtered inside SQL.
+- **Google Docs import** — connect a Google account in Settings, multi-select Docs from Drive, and import them as top-level pages (HTML export → TipTap, images rehosted to Blob when configured). See [Google Docs import](#google-docs-import).
 - **Slack integration** — paste a doc link in Slack and get a rich inline preview (permission-aware), search with `/docs`, or ask `@backbeat-notes` for documents like a detailed description. Semantic results quote and deep-link to the matching paragraph in rich threaded cards. See [Slack integration](#slack-integration).
 - **Polish** — keyboard shortcuts (press `?` in the app), loading skeletons, empty states, toasts, responsive layout with a mobile drawer.
 
@@ -94,6 +95,9 @@ See [`.env.example`](./.env.example) for the full list. Required for a working d
 | `SLACK_CLIENT_SECRET` | Server | Slack app client secret |
 | `SLACK_SIGNING_SECRET` | Server | Verifies incoming Slack webhooks |
 | `SLACK_TOKEN_ENCRYPTION_KEY` | Server | 32-byte base64 key (`openssl rand -base64 32`) — encrypts Slack bot tokens at rest |
+| `GOOGLE_CLIENT_ID` | Server | Google OAuth client id (optional — enables Google Docs import) |
+| `GOOGLE_CLIENT_SECRET` | Server | Google OAuth client secret |
+| `GOOGLE_TOKEN_ENCRYPTION_KEY` | Server | Optional 32-byte base64 key for Google tokens; falls back to `SLACK_TOKEN_ENCRYPTION_KEY` |
 | `ANTHROPIC_API_KEY` | Server | Optional — improves keyword extraction for conversational Slack requests |
 | `OPENAI_API_KEY` | Server | Optional — enables paragraph-level semantic similarity in Slack with `text-embedding-3-small`; lexical fallback works without it |
 
@@ -333,6 +337,51 @@ than comparing the strings literally.
 2. Update DNS as instructed.
 3. Set Production `NEXT_PUBLIC_APP_URL` / `BETTER_AUTH_URL` to `https://your-domain.com`.
 4. Redeploy so auth cookies and email links use the production domain.
+
+---
+
+## Google Docs import
+
+Bring existing company docs from Google Drive into a BackBeat Notes workspace as **flat top-level pages**. Folder hierarchy and remapping Google Doc→Doc links are left for a follow-up — after import you can nest pages and fix links in the editor.
+
+**What you get once configured:**
+
+| Feature | How |
+| --- | --- |
+| Connect Google | **Settings → Google Docs → Connect Google** (per-user OAuth; `drive.readonly` + profile email). |
+| Browse & import | Search/select Docs you can open in Drive, then import one-by-one with progress. Already-imported sources are skipped. |
+| Content fidelity | Drive HTML zip export → TipTap (headings, lists, tasks, code, links, images). Tables are flattened to paragraphs. |
+| Images | Rehosted to Vercel Blob when `BLOB_READ_WRITE_TOKEN` is set; otherwise images are skipped. |
+
+### 1. Create a Google Cloud OAuth client
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create (or pick) a project.
+2. Enable the **Google Drive API**.
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID** → application type **Web application**.
+4. Add an authorized redirect URI:
+   - Local: `http://localhost:3000/api/google/oauth/callback`
+   - Production: `https://YOUR_DOMAIN/api/google/oauth/callback`
+5. Copy the **Client ID** and **Client Secret**.
+6. Under **OAuth consent screen**, keep the app in **Testing** and add your Google accounts as test users until the app is verified. `drive.readonly` is a sensitive scope.
+
+### 2. Configure environment variables
+
+```bash
+GOOGLE_CLIENT_ID=….apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=…
+# Optional if SLACK_TOKEN_ENCRYPTION_KEY is already set:
+# GOOGLE_TOKEN_ENCRYPTION_KEY=$(openssl rand -base64 32)
+```
+
+Redeploy (or restart `pnpm dev`). Without these variables the Settings section shows an honest “not configured” state.
+
+### 3. Import docs
+
+1. Open a workspace → **Settings → Google Docs → Connect Google**.
+2. Select one or more Docs → **Import**.
+3. Or start from the workspace home **Import from Google Docs** button (jumps to the same Settings section).
+
+Imported pages land at the workspace root. Provenance is stored in `document_import_sources` so a later iteration can remap `docs.google.com` links to local pages.
 
 ---
 

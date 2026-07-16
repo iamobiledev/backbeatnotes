@@ -11,11 +11,13 @@ import {
   getConnectionForWorkspace,
   getUserSlackLinks,
 } from "@/lib/slack/service";
+import { getGoogleDocsStatus } from "@/lib/google-docs/status";
 import { getEmailDeliveryStatus } from "@/lib/email";
 import { MembersSection } from "./members-section";
 import { WorkspaceNameSection } from "./workspace-name-section";
 import { NotificationsSection } from "./notifications-section";
 import { SlackSection } from "./slack-section";
+import { GoogleDocsSection } from "./google-docs-section";
 
 export const metadata = { title: "Settings" };
 
@@ -33,7 +35,7 @@ export default async function WorkspaceSettingsPage({
   const isAdmin = workspace.role === "owner" || workspace.role === "admin";
   const emailDelivery = getEmailDeliveryStatus();
 
-  const [members, invitations, slack] = await Promise.all([
+  const [members, invitations, slack, google] = await Promise.all([
     workspace.isPersonal
       ? Promise.resolve([])
       : listWorkspaceMembers({ userId: session.user.id, workspaceId }),
@@ -41,6 +43,7 @@ export default async function WorkspaceSettingsPage({
       ? listPendingInvitations({ userId: session.user.id, workspaceId })
       : Promise.resolve([]),
     getSlackStatus(workspaceId),
+    getGoogleDocsStatus(session.user.id),
   ]);
 
   const emailNotificationsEnabled = session.user.emailNotifications ?? true;
@@ -125,6 +128,12 @@ export default async function WorkspaceSettingsPage({
       )}
 
       <NotificationsSection enabled={emailNotificationsEnabled} />
+
+      <GoogleDocsSection
+        workspaceId={workspaceId}
+        canImport={workspace.role !== "guest"}
+        google={google}
+      />
 
       <SlackSection
         workspaceId={workspaceId}

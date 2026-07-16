@@ -10,6 +10,7 @@ import {
   listUserWorkspaces,
 } from "@/lib/documents/service";
 import { CreateDocumentButton } from "@/components/documents/create-document-button";
+import { ImportGoogleDocsButton } from "@/components/documents/import-google-docs-button";
 
 export default async function WorkspacePage({
   params,
@@ -44,7 +45,8 @@ export default async function WorkspacePage({
           </p>
         </div>
         {canEdit && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <ImportGoogleDocsButton workspaceId={workspaceId} />
             <CreateDocumentButton
               workspaceId={workspaceId}
               docType="wiki"

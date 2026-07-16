@@ -7,7 +7,10 @@ import { requireMembership } from "@/lib/permissions";
 import { deleteConnection, getValidAccessToken } from "@/lib/google-docs/service";
 import { isGoogleDocsConfigured } from "@/lib/google-docs/status";
 import { listGoogleDocs } from "@/lib/google-docs/client";
-import { importGoogleDoc } from "@/lib/google-docs/import-document";
+import {
+  findExistingImport,
+  importGoogleDoc,
+} from "@/lib/google-docs/import-document";
 import { logger } from "@/lib/logger";
 
 export type GoogleActionResult<T = undefined> =
@@ -131,11 +134,15 @@ export async function actionImportGoogleDoc(input: {
     const code = error instanceof Error ? error.message : String(error);
     if (code === "ALREADY_IMPORTED") {
       // Surface as a soft skip so bulk import can continue cleanly.
+      const existing = await findExistingImport({
+        workspaceId: input.workspaceId,
+        googleFileId: input.googleFileId,
+      }).catch(() => null);
       return {
         ok: true,
         data: {
-          documentId: "",
-          title: "",
+          documentId: existing?.documentId ?? "",
+          title: existing?.title ?? "",
           skipped: true,
           imagesSkipped: 0,
         },

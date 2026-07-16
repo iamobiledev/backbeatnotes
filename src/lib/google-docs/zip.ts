@@ -14,7 +14,22 @@ export type UnzippedHtmlExport = {
  * Picks the first `.html` / `.htm` entry as the document body.
  */
 export function unzipHtmlExport(bytes: Uint8Array): UnzippedHtmlExport {
-  const entries = unzipSync(bytes);
+  let entries: Record<string, Uint8Array>;
+  try {
+    entries = unzipSync(bytes);
+  } catch {
+    // Some responses may be bare HTML incorrectly typed as zip — try UTF-8.
+    const asText = strFromU8(bytes);
+    if (asText.includes("<html") || asText.includes("<body")) {
+      return {
+        html: asText,
+        htmlPath: "index.html",
+        files: new Map(),
+      };
+    }
+    throw new Error("ZIP_MISSING_HTML");
+  }
+
   const files = new Map<string, Uint8Array>();
   let htmlPath = "";
   let html = "";
@@ -32,11 +47,6 @@ export function unzipHtmlExport(bytes: Uint8Array): UnzippedHtmlExport {
   }
 
   if (!htmlPath) {
-    // Some exports may be a bare HTML buffer incorrectly typed as zip — try UTF-8.
-    const asText = strFromU8(bytes);
-    if (asText.includes("<html") || asText.includes("<body")) {
-      return { html: asText, htmlPath: "index.html", files };
-    }
     throw new Error("ZIP_MISSING_HTML");
   }
 
