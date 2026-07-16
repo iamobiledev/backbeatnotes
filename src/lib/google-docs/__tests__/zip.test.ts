@@ -1,8 +1,26 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { zipSync, strToU8 } from "fflate";
 import { unzipHtmlExport } from "../zip";
 
+const fixturesDir = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "fixtures",
+);
+
 describe("unzipHtmlExport", () => {
+  it("extracts HTML and images from the sample Drive export fixture", () => {
+    const zipped = new Uint8Array(
+      readFileSync(join(fixturesDir, "sample-doc.zip")),
+    );
+    const result = unzipHtmlExport(zipped);
+    expect(result.htmlPath).toBe("doc.html");
+    expect(result.html).toContain("Fixture Handbook");
+    expect(result.files.has("images/pic.png")).toBe(true);
+  });
+
   it("extracts the first HTML entry and sibling files", () => {
     const zipped = zipSync({
       "doc.html": strToU8("<html><body><p>Hi</p></body></html>"),
