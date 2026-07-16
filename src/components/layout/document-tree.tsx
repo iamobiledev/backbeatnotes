@@ -535,7 +535,7 @@ function TreeItem({
             className={`group flex items-center rounded-md pr-1 transition-colors hover:bg-[var(--sidebar-hover)] ${
               isActive ? "bg-[var(--sidebar-active)]" : ""
             } ${isDropTarget ? DROP_TARGET_CLASS : ""}`}
-            style={{ paddingLeft: depth * 12 }}
+            style={{ paddingLeft: depth * 18 }}
           >
             {/* Notion-style: disclosure chevron stays visible; icon sits beside it. */}
             <button
@@ -684,7 +684,7 @@ function TreeItem({
           ) : (
             <li
               className="pointer-events-none select-none py-1 text-sm italic text-[var(--muted-foreground)]"
-              style={{ paddingLeft: (depth + 1) * 12 + 28 }}
+              style={{ paddingLeft: (depth + 1) * 18 + 28 }}
               aria-hidden
             >
               No pages inside
