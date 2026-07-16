@@ -179,6 +179,11 @@ export const workspaces = pgTable(
      * rejected server-side for personal workspaces.
      */
     isPersonal: boolean("is_personal").notNull().default(false),
+    /**
+     * Verified-email domain whose users automatically join this workspace as
+     * members (e.g. "rowsone.com"). Null disables domain auto-join.
+     */
+    autoJoinDomain: text("auto_join_domain"),
     createdById: text("created_by_id")
       .notNull()
       .references(() => user.id, { onDelete: "restrict" }),
@@ -194,6 +199,9 @@ export const workspaces = pgTable(
     uniqueIndex("workspaces_personal_owner_uidx")
       .on(t.createdById)
       .where(sql`${t.isPersonal}`),
+    index("workspaces_auto_join_domain_idx")
+      .on(t.autoJoinDomain)
+      .where(sql`${t.autoJoinDomain} IS NOT NULL`),
   ],
 );
 
