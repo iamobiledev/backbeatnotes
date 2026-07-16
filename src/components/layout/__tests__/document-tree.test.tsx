@@ -113,6 +113,50 @@ function rowFor(title: string) {
   return screen.getByText(title).closest("div[draggable]") as HTMLElement;
 }
 
+describe("DocumentTree expand / nested pages", () => {
+  it("shows a persistent Expand control on every page, including empty ones", () => {
+    renderTree();
+    expect(
+      screen.getAllByRole("button", { name: "Expand" }).length,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("reveals nested children when a parent is expanded", () => {
+    renderTree();
+    expect(screen.queryByText("Child page")).not.toBeInTheDocument();
+
+    const parentRow = rowFor("Alpha");
+    fireEvent.click(
+      parentRow.querySelector('button[aria-label="Expand"]') as HTMLElement,
+    );
+
+    expect(screen.getByText("Child page")).toBeInTheDocument();
+    expect(
+      parentRow.querySelector('button[aria-label="Collapse"]'),
+    ).toBeTruthy();
+  });
+
+  it("shows 'No pages inside' when an empty page is expanded", () => {
+    renderTree();
+    const betaRow = rowFor("Beta");
+    fireEvent.click(
+      betaRow.querySelector('button[aria-label="Expand"]') as HTMLElement,
+    );
+
+    expect(screen.getByText("No pages inside")).toBeInTheDocument();
+  });
+
+  it("auto-expands a parent that has children when that parent is active", () => {
+    renderTree({ activePath: "/app/ws_1/docs/doc_a" });
+    expect(screen.getByText("Child page")).toBeInTheDocument();
+  });
+
+  it("auto-expands ancestors so a nested active page is visible in the tree", () => {
+    renderTree({ activePath: "/app/ws_1/docs/doc_child" });
+    expect(screen.getByText("Child page")).toBeInTheDocument();
+  });
+});
+
 describe("DocumentTree context menu", () => {
   it("right-click opens a Notion-style menu instead of the browser default", () => {
     renderTree();

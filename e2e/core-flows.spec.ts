@@ -211,11 +211,32 @@ test.describe.serial("core flows", () => {
     await page.waitForURL(childUrl);
 
     // The sidebar tree shows the child nested under the parent.
+    const nav = page.getByRole("navigation", { name: "Documents" });
+    await expect(nav.getByText(`Chapter One ${runId}`)).toBeVisible();
+
+    // Viewing the parent auto-expands it so nested pages stay visible
+    // (Notion-style), without needing a hover-only disclosure control.
+    await page.goto(docUrl);
+    const parentItem = nav
+      .locator('[role="treeitem"]')
+      .filter({ has: page.getByRole("link", { name: docTitle }) })
+      .first();
     await expect(
-      page
-        .getByRole("navigation", { name: "Documents" })
-        .getByText(`Chapter One ${runId}`),
+      parentItem.getByRole("link", { name: `Chapter One ${runId}` }),
     ).toBeVisible();
+    await expect(
+      parentItem.getByRole("button", { name: "Collapse" }),
+    ).toBeVisible();
+
+    // Empty pages still expose an Expand control and Notion's empty state.
+    await parentItem.getByRole("link", { name: `Chapter One ${runId}` }).click();
+    await page.waitForURL(childUrl);
+    const childItem = nav
+      .locator('[role="treeitem"]')
+      .filter({ has: page.getByRole("link", { name: `Chapter One ${runId}` }) })
+      .first();
+    await childItem.getByRole("button", { name: "Expand" }).click();
+    await expect(nav.getByText("No pages inside")).toBeVisible();
   });
 
   test("sidebar has Private/Teamspaces sections and a '···' page menu", async ({

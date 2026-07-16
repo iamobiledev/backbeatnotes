@@ -58,11 +58,12 @@ const MoveToDialog = dynamic(() =>
 );
 
 /**
- * Collapsible page tree for the sidebar. Ancestors of the active page are
- * expanded automatically. Rows expose Notion-style hover controls: a "···"
- * menu (rename, favorite, copy link, duplicate, move, trash) and an
- * add-page "+". Rows also open the same menu on right-click and support
- * drag & drop: drop a page onto another page to nest it as a sub-page.
+ * Collapsible page tree for the sidebar. Ancestors of the active page — and
+ * the active page itself — are expanded automatically so nested sub-pages are
+ * visible without hunting for a hover-only control. Every row has a persistent
+ * disclosure chevron (Notion-style); expanding a page with no children shows
+ * "No pages inside". Rows also expose hover "···" / "+" controls, a right-click
+ * menu, and drag & drop nesting.
  */
 export function DocumentTree({
   nodes,
@@ -91,13 +92,17 @@ export function DocumentTree({
     return match?.[1] ?? null;
   }, [activePath]);
 
-  const ancestorIds = useMemo(() => {
+  // Path from root → active page. Ancestors are always expanded so the active
+  // page is reachable; the active page itself expands when it has children so
+  // sub-pages are visible while you are reading the parent (Notion-like).
+  const autoExpandedIds = useMemo(() => {
     if (!activeDocId) return new Set<string>();
     const result = new Set<string>();
     const walk = (list: DocumentTreeNode[], trail: string[]): boolean => {
       for (const node of list) {
         if (node.id === activeDocId) {
           trail.forEach((id) => result.add(id));
+          if (node.children.length > 0) result.add(node.id);
           return true;
         }
         if (walk(node.children, [...trail, node.id])) return true;
@@ -108,25 +113,26 @@ export function DocumentTree({
     return result;
   }, [nodes, activeDocId]);
 
-  // User toggles override the default (auto-expanded ancestors of the
-  // active page) — no effects needed.
+  // User toggles override the default auto-expanded path — no effects needed.
   const [userToggled, setUserToggled] = useState<Map<string, boolean>>(
     new Map(),
   );
 
   const expanded = useMemo(() => {
-    const set = new Set<string>(ancestorIds);
+    const set = new Set<string>(autoExpandedIds);
     for (const [id, isOpen] of userToggled) {
       if (isOpen) set.add(id);
       else set.delete(id);
     }
     return set;
-  }, [ancestorIds, userToggled]);
+  }, [autoExpandedIds, userToggled]);
 
   const toggle = (id: string, force?: boolean) =>
     setUserToggled((prev) => {
       const next = new Map(prev);
-      const currentlyOpen = next.has(id) ? next.get(id)! : ancestorIds.has(id);
+      const currentlyOpen = next.has(id)
+        ? next.get(id)!
+        : autoExpandedIds.has(id);
       next.set(id, force ?? !currentlyOpen);
       return next;
     });
@@ -441,7 +447,7 @@ function TreeItem({
     dropDepthRef.current += 1;
     setIsDropTarget(true);
     // Notion behavior: hovering a collapsed parent briefly expands it.
-    if (hasChildren && !isExpanded && !expandTimerRef.current) {
+    if (!isExpanded && !expandTimerRef.current) {
       expandTimerRef.current = setTimeout(() => {
         expandTimerRef.current = null;
         onToggle(node.id, true);
@@ -514,7 +520,7 @@ function TreeItem({
     <li
       role="treeitem"
       aria-selected={isActive}
-      aria-expanded={hasChildren ? isExpanded : undefined}
+      aria-expanded={isExpanded}
     >
       <ContextMenu onOpenChange={setContextOpen}>
         <ContextMenuTrigger asChild>
@@ -531,35 +537,31 @@ function TreeItem({
             } ${isDropTarget ? DROP_TARGET_CLASS : ""}`}
             style={{ paddingLeft: depth * 12 }}
           >
-            {/* Notion-style: the page icon swaps to a toggle chevron on hover. */}
-            <span className="relative flex h-6 w-6 shrink-0 items-center justify-center">
-              <span
-                className={`pointer-events-none absolute inset-0 flex items-center justify-center ${
-                  hasChildren ? "transition-opacity group-hover:opacity-0" : ""
+            {/* Notion-style: disclosure chevron stays visible; icon sits beside it. */}
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={isExpanded ? "Collapse" : "Expand"}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onToggle(node.id);
+              }}
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--muted-foreground)] hover:bg-[var(--hover-strong)] focus-visible:outline-none"
+            >
+              <ChevronRight
+                className={`h-3.5 w-3.5 transition-transform ${
+                  isExpanded ? "rotate-90" : ""
                 }`}
-              >
-                {node.icon ? (
-                  <span className="text-sm leading-none">{node.icon}</span>
-                ) : node.docType === "wiki" ? (
-                  <BookOpen className="h-4 w-4 text-[var(--muted-foreground)]" />
-                ) : (
-                  <FileText className="h-4 w-4 text-[var(--muted-foreground)]" />
-                )}
-              </span>
-              {hasChildren && (
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  aria-label={isExpanded ? "Collapse" : "Expand"}
-                  onClick={() => onToggle(node.id)}
-                  className="absolute inset-0.5 flex items-center justify-center rounded text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[var(--hover-strong)] focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
-                >
-                  <ChevronRight
-                    className={`h-3.5 w-3.5 transition-transform ${
-                      isExpanded ? "rotate-90" : ""
-                    }`}
-                  />
-                </button>
+              />
+            </button>
+            <span className="flex h-6 w-5 shrink-0 items-center justify-center">
+              {node.icon ? (
+                <span className="text-sm leading-none">{node.icon}</span>
+              ) : node.docType === "wiki" ? (
+                <BookOpen className="h-4 w-4 text-[var(--muted-foreground)]" />
+              ) : (
+                <FileText className="h-4 w-4 text-[var(--muted-foreground)]" />
               )}
             </span>
 
@@ -630,7 +632,10 @@ function TreeItem({
                     type="button"
                     aria-label={`Add page inside ${displayTitle || "Untitled"}`}
                     title="Add a page inside"
-                    onClick={() => onCreateChild(node.id)}
+                    onClick={() => {
+                      onToggle(node.id, true);
+                      onCreateChild(node.id);
+                    }}
                     className="flex h-5 w-5 items-center justify-center rounded text-[var(--muted-foreground)] hover:bg-[var(--hover-strong)] focus-visible:outline-none"
                   >
                     <Plus className="h-3.5 w-3.5" />
@@ -656,25 +661,35 @@ function TreeItem({
         />
       )}
 
-      {hasChildren && isExpanded && (
+      {isExpanded && (
         <ul role="group">
-          {node.children.map((child) => (
-            <TreeItem
-              key={child.id}
-              node={child}
-              depth={depth + 1}
-              workspaceId={workspaceId}
-              activeDocId={activeDocId}
-              expanded={expanded}
-              favoriteIds={favoriteIds}
-              canEdit={canEdit}
-              rootNodes={rootNodes}
-              rootLabel={rootLabel}
-              onToggle={onToggle}
-              onCreateChild={onCreateChild}
-              onMoved={onMoved}
-            />
-          ))}
+          {hasChildren ? (
+            node.children.map((child) => (
+              <TreeItem
+                key={child.id}
+                node={child}
+                depth={depth + 1}
+                workspaceId={workspaceId}
+                activeDocId={activeDocId}
+                expanded={expanded}
+                favoriteIds={favoriteIds}
+                canEdit={canEdit}
+                rootNodes={rootNodes}
+                rootLabel={rootLabel}
+                onToggle={onToggle}
+                onCreateChild={onCreateChild}
+                onMoved={onMoved}
+              />
+            ))
+          ) : (
+            <li
+              className="pointer-events-none select-none py-1 text-sm italic text-[var(--muted-foreground)]"
+              style={{ paddingLeft: (depth + 1) * 12 + 28 }}
+              aria-hidden
+            >
+              No pages inside
+            </li>
+          )}
         </ul>
       )}
     </li>

@@ -402,6 +402,11 @@ export async function listWorkspaceDocumentTrees(
       if (parent) parent.children.push(node);
       else roots.push(node);
     }
+    const sortRec = (list: DocumentTreeNode[]) => {
+      list.sort((a, b) => a.title.localeCompare(b.title));
+      for (const item of list) sortRec(item.children);
+    };
+    sortRec(roots);
     return { workspaceId, nodes: roots };
   });
 }
