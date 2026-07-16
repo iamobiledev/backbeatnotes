@@ -52,6 +52,15 @@ const serverEnvSchema = z.object({
   /** Override the Slack API base URL (tests/mocks only) */
   SLACK_API_BASE: z.string().url().optional(),
 
+  /* --- Google Docs import (all optional; features disable gracefully) --- */
+  /** Google OAuth client id (Google Cloud Console → Credentials) */
+  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  /** Google OAuth client secret */
+  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+  /** 32-byte base64 key for encrypting Google tokens at rest.
+   *  Falls back to SLACK_TOKEN_ENCRYPTION_KEY when unset. */
+  GOOGLE_TOKEN_ENCRYPTION_KEY: z.string().min(32).optional(),
+
   /* --- Optional LLM for the @backbeat-notes Slack assistant --- */
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
@@ -102,6 +111,9 @@ export function getServerEnv(): ServerEnv {
       SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
       SLACK_TOKEN_ENCRYPTION_KEY: process.env.SLACK_TOKEN_ENCRYPTION_KEY,
       SLACK_API_BASE: process.env.SLACK_API_BASE,
+      GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+      GOOGLE_TOKEN_ENCRYPTION_KEY: process.env.GOOGLE_TOKEN_ENCRYPTION_KEY,
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     };
@@ -129,6 +141,9 @@ export function getServerEnv(): ServerEnv {
     SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
     SLACK_TOKEN_ENCRYPTION_KEY: process.env.SLACK_TOKEN_ENCRYPTION_KEY,
     SLACK_API_BASE: process.env.SLACK_API_BASE,
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+    GOOGLE_TOKEN_ENCRYPTION_KEY: process.env.GOOGLE_TOKEN_ENCRYPTION_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   });

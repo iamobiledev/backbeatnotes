@@ -666,6 +666,54 @@ export async function createDocument(opts: {
   return doc;
 }
 
+/**
+ * Create a root-level document with prefilled TipTap content (import flows).
+ * Always lands at workspace root (`parentId: null`) for the Google Docs importer.
+ */
+export async function importDocument(opts: {
+  userId: string;
+  workspaceId: string;
+  title: string;
+  contentJson: Record<string, unknown>;
+  activityMetadata?: Record<string, unknown>;
+}) {
+  await requireMembership(opts.userId, opts.workspaceId, "member");
+  const db = getDb();
+  const id = nanoid();
+  const title = opts.title?.trim() || "Untitled";
+  const normalizedContent = normalizeDocumentBlocks(opts.contentJson).contentJson;
+  const plainTextContent = extractPlainText(normalizedContent);
+
+  const [doc] = await db
+    .insert(documents)
+    .values({
+      id,
+      workspaceId: opts.workspaceId,
+      parentId: null,
+      title,
+      breadcrumbPath: title,
+      docType: "doc",
+      contentJson: normalizedContent,
+      plainTextContent,
+      createdById: opts.userId,
+      updatedById: opts.userId,
+    })
+    .returning();
+
+  await syncDocumentSearchAfterWrite(doc);
+  await recordDocumentActivity({
+    documentId: doc.id,
+    userId: opts.userId,
+    action: "created",
+    metadata: {
+      docType: doc.docType,
+      ...(opts.activityMetadata ?? {}),
+    },
+  });
+
+  return doc;
+}
+
 /** Copy a document (content, icon, type) next to the original. */
 export async function duplicateDocument(opts: {
   userId: string;

@@ -64,6 +64,13 @@
       "when": 1784079788354,
       "tag": "0008_sour_shen",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784228289599,
+      "tag": "0009_chemical_valkyrie",
+      "breakpoints": true
     }
   ]
 }

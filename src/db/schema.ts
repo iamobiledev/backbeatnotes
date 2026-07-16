@@ -692,6 +692,78 @@ export const slackEvents = pgTable(
 );
 
 /* -------------------------------------------------------------------------- */
+/* Google Docs import                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Per-user Google OAuth connection for Drive/Docs import.
+ * Tokens are encrypted at rest (AES-256-GCM, see src/lib/google-docs/crypto).
+ */
+export const googleConnections = pgTable(
+  "google_connections",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    googleAccountEmail: text("google_account_email").notNull(),
+    googleAccountId: text("google_account_id").notNull(),
+    encryptedAccessToken: text("encrypted_access_token").notNull(),
+    encryptedRefreshToken: text("encrypted_refresh_token").notNull(),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", {
+      withTimezone: true,
+    }).notNull(),
+    scopes: text("scopes").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("google_connections_user_uidx").on(t.userId),
+    index("google_connections_account_idx").on(t.googleAccountId),
+  ],
+);
+
+/**
+ * Provenance for imported documents — enables future remapping of
+ * Google Doc → Google Doc links onto local BackBeat pages.
+ */
+export const documentImportSources = pgTable(
+  "document_import_sources",
+  {
+    id: text("id").primaryKey(),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    externalId: text("external_id").notNull(),
+    externalUrl: text("external_url").notNull(),
+    externalTitle: text("external_title").notNull(),
+    importedById: text("imported_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    importedAt: timestamp("imported_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("document_import_sources_document_uidx").on(t.documentId),
+    uniqueIndex("document_import_sources_workspace_provider_external_uidx").on(
+      t.workspaceId,
+      t.provider,
+      t.externalId,
+    ),
+    index("document_import_sources_workspace_idx").on(t.workspaceId),
+  ],
+);
+
+/* -------------------------------------------------------------------------- */
 /* Relations                                                                   */
 /* -------------------------------------------------------------------------- */
 
