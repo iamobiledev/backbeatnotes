@@ -30,6 +30,18 @@ const serverEnvSchema = z.object({
   RESEND_API_KEY: z.string().min(1).optional(),
   EMAIL_FROM: z.string().min(1).optional(),
 
+  /* --- Google OAuth sign-in (optional; button hidden when unset) --- */
+  /** OAuth 2.0 client id from Google Cloud Console */
+  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  /** OAuth 2.0 client secret from Google Cloud Console */
+  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+  /**
+   * Google Workspace hosted domain (e.g. "rowsone.com"). When set, Google
+   * sign-in is restricted to accounts in that Workspace org — enforced
+   * against the verified `hd` claim of Google's id token.
+   */
+  GOOGLE_HOSTED_DOMAIN: z.string().min(1).optional(),
+
   /** Vercel Blob read/write token */
   BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
 
@@ -94,6 +106,9 @@ export function getServerEnv(): ServerEnv {
         process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
       RESEND_API_KEY: process.env.RESEND_API_KEY,
       EMAIL_FROM: process.env.EMAIL_FROM,
+      GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+      GOOGLE_HOSTED_DOMAIN: process.env.GOOGLE_HOSTED_DOMAIN,
       BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
       CRON_SECRET: process.env.CRON_SECRET,
       NEON_REGION: process.env.NEON_REGION,
@@ -121,6 +136,9 @@ export function getServerEnv(): ServerEnv {
         : undefined),
     RESEND_API_KEY: process.env.RESEND_API_KEY,
     EMAIL_FROM: process.env.EMAIL_FROM,
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+    GOOGLE_HOSTED_DOMAIN: process.env.GOOGLE_HOSTED_DOMAIN,
     BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
     CRON_SECRET: process.env.CRON_SECRET,
     NEON_REGION: process.env.NEON_REGION,
@@ -238,6 +256,27 @@ export function getAuthAllowedHosts(): string[] {
   }
 
   return [...hosts];
+}
+
+export type GoogleAuthConfig = {
+  clientId: string;
+  clientSecret: string;
+  /** Google Workspace hosted domain restriction (id-token enforced). */
+  hostedDomain?: string;
+};
+
+/**
+ * Google OAuth sign-in configuration, or null when not configured.
+ * The "Continue with Google" button is hidden while this returns null.
+ */
+export function getGoogleAuthConfig(): GoogleAuthConfig | null {
+  const env = getServerEnv();
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return null;
+  return {
+    clientId: env.GOOGLE_CLIENT_ID,
+    clientSecret: env.GOOGLE_CLIENT_SECRET,
+    hostedDomain: env.GOOGLE_HOSTED_DOMAIN?.trim().toLowerCase() || undefined,
+  };
 }
 
 /** Connection string for migrations (prefer unpooled / direct). */

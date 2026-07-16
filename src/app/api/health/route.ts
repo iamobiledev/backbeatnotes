@@ -101,6 +101,10 @@ export async function GET() {
       hasBlobToken: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
       hasResend: Boolean(process.env.RESEND_API_KEY),
       hasEmailFrom: Boolean(process.env.EMAIL_FROM),
+      /** "Continue with Google" is shown when true. */
+      hasGoogleOAuth: Boolean(
+        process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
+      ),
       /** "resend" = real delivery; "console-only" = logged, not sent. */
       emailDelivery: email.delivery,
       emailDeliveryMissing: email.missing,

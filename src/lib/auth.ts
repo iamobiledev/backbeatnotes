@@ -4,7 +4,12 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { sql } from "drizzle-orm";
 import { getDb, user, session, account, verification } from "@/db";
-import { getAppUrl, getAuthAllowedHosts, getServerEnv } from "@/env/server";
+import {
+  getAppUrl,
+  getAuthAllowedHosts,
+  getGoogleAuthConfig,
+  getServerEnv,
+} from "@/env/server";
 import {
   sendPasswordResetEmail,
   sendVerificationEmail,
@@ -14,6 +19,8 @@ import {
   invitationBelongsToEmail,
   INVITATION_SIGN_UP_HEADER,
 } from "@/lib/invitations";
+import { autoJoinWorkspacesForUser } from "@/lib/workspaces/auto-join";
+import { logger } from "@/lib/logger";
 
 /**
  * Better Auth configured with Neon (via Drizzle) as the persistent store.
@@ -23,6 +30,7 @@ export function createAuth() {
   const env = getServerEnv();
   const db = getDb();
   const fallbackUrl = getAppUrl();
+  const google = getGoogleAuthConfig();
 
   return betterAuth({
     appName: brand.name,
@@ -54,6 +62,31 @@ export function createAuth() {
       requireEmailVerification: true,
       sendResetPassword: async ({ user: u, url }) => {
         await sendPasswordResetEmail({ to: u.email, url });
+      },
+    },
+    // Google sign-in (optional — enabled by GOOGLE_CLIENT_ID/SECRET).
+    // `hd` restricts sign-in to a Google Workspace org: it is sent as the
+    // account-picker hint AND enforced against the verified `hd` claim of
+    // the returned id token, so accounts outside the org are rejected.
+    ...(google
+      ? {
+          socialProviders: {
+            google: {
+              clientId: google.clientId,
+              clientSecret: google.clientSecret,
+              prompt: "select_account" as const,
+              ...(google.hostedDomain ? { hd: google.hostedDomain } : {}),
+            },
+          },
+        }
+      : {}),
+    account: {
+      accountLinking: {
+        // A Google sign-in whose verified email matches an existing
+        // (verified) email/password user links into that same user row —
+        // teammates keep one account when they switch to Google.
+        enabled: true,
+        trustedProviders: ["google"],
       },
     },
     emailVerification: {
@@ -118,6 +151,41 @@ export function createAuth() {
                 role: Number(count) === 0 ? "admin" : "developer",
               },
             };
+          },
+        },
+      },
+      session: {
+        create: {
+          // Domain auto-join: whenever a session is created (email/password
+          // sign-in, Google OAuth callback, post-verification auto sign-in),
+          // idempotently add verified users to workspaces whose
+          // `autoJoinDomain` matches their email domain. Failures are logged
+          // and never block sign-in.
+          after: async (newSession) => {
+            try {
+              const [u] = await db
+                .select({
+                  id: user.id,
+                  email: user.email,
+                  emailVerified: user.emailVerified,
+                })
+                .from(user)
+                .where(sql`${user.id} = ${newSession.userId}`)
+                .limit(1);
+              if (u) {
+                await autoJoinWorkspacesForUser({
+                  userId: u.id,
+                  email: u.email,
+                  emailVerified: u.emailVerified,
+                });
+              }
+            } catch (error) {
+              logger.error("workspace.auto_join_failed", {
+                userId: newSession.userId,
+                error:
+                  error instanceof Error ? error.message : String(error),
+              });
+            }
           },
         },
       },
