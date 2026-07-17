@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  actorCanClaimAutoJoinDomain,
   emailDomainOf,
   excludeWorkspacesWithPendingInvite,
   membershipRoleFromInvitation,
@@ -136,11 +137,32 @@ describe("shouldApplyInvitationRoleToMembership", () => {
     ).toBe(true);
   });
 
-  it("never demotes an owner via invitation accept", () => {
+  it("upgrades guests when they accept a higher-role invite", () => {
+    expect(
+      shouldApplyInvitationRoleToMembership({
+        existingRole: "guest",
+        invitationRole: "admin",
+      }),
+    ).toBe(true);
+  });
+
+  it("never demotes an owner or admin via invitation accept", () => {
     expect(
       shouldApplyInvitationRoleToMembership({
         existingRole: "owner",
         invitationRole: "guest",
+      }),
+    ).toBe(false);
+    expect(
+      shouldApplyInvitationRoleToMembership({
+        existingRole: "admin",
+        invitationRole: "guest",
+      }),
+    ).toBe(false);
+    expect(
+      shouldApplyInvitationRoleToMembership({
+        existingRole: "admin",
+        invitationRole: "member",
       }),
     ).toBe(false);
   });
@@ -150,6 +172,29 @@ describe("shouldApplyInvitationRoleToMembership", () => {
       shouldApplyInvitationRoleToMembership({
         existingRole: "guest",
         invitationRole: "guest",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("actorCanClaimAutoJoinDomain", () => {
+  it("requires the actor email to be at the claimed domain", () => {
+    expect(
+      actorCanClaimAutoJoinDomain({
+        actorEmail: "allen@rowsone.com",
+        domain: "rowsone.com",
+      }),
+    ).toBe(true);
+    expect(
+      actorCanClaimAutoJoinDomain({
+        actorEmail: "allen@rowsone.com",
+        domain: "elsewhere.com",
+      }),
+    ).toBe(false);
+    expect(
+      actorCanClaimAutoJoinDomain({
+        actorEmail: "not-an-email",
+        domain: "rowsone.com",
       }),
     ).toBe(false);
   });

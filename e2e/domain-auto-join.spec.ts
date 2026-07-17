@@ -51,7 +51,8 @@ test.describe.serial("domain auto-join", () => {
   test.skip(!hasDb, "Requires a seeded database (E2E_HAS_DATABASE=1)");
 
   const runId = Date.now().toString(36);
-  const domain = `autojoin-${runId}.example.com`;
+  // Must match the seeded admin's verified email domain (demo@backbeatnotes.local).
+  const domain = "backbeatnotes.local";
   const memberEmail = `insider-${runId}@${domain}`;
   const outsiderEmail = `outsider-${runId}@elsewhere-${runId}.example.com`;
   let workspaceId = "";
@@ -104,6 +105,22 @@ test.describe.serial("domain auto-join", () => {
       page.getByText(/public email domains like gmail\.com/i),
     ).toBeVisible({ timeout: 15_000 });
     // The stored domain is unchanged.
+    expect(
+      psql(`SELECT auto_join_domain FROM workspaces WHERE id='${workspaceId}'`),
+    ).toBe(domain);
+  });
+
+  test("admins cannot claim a domain they do not own", async ({ page }) => {
+    await signIn(page, DEMO_EMAIL);
+    await page.goto(`/app/${workspaceId}/settings`);
+    await page.getByLabel("Allowed email domain").fill("other-company.example");
+    await page
+      .locator("section[aria-labelledby='domain-access-heading']")
+      .getByRole("button", { name: "Save" })
+      .click();
+    await expect(
+      page.getByText(/domain of your own verified email/i),
+    ).toBeVisible({ timeout: 15_000 });
     expect(
       psql(`SELECT auto_join_domain FROM workspaces WHERE id='${workspaceId}'`),
     ).toBe(domain);

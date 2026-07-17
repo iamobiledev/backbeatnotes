@@ -8,6 +8,7 @@ import {
   workspaceInvitations,
 } from "@/db";
 import { logger } from "@/lib/logger";
+import { roleAtLeast } from "@/lib/roles";
 
 /**
  * Domain-based automatic workspace membership.
@@ -109,16 +110,30 @@ export function membershipRoleFromInvitation(
 
 /**
  * Decide whether accepting an invitation should change an existing membership.
- * Owners are never demoted via invitation accept.
+ *
+ * - Owners are never changed.
+ * - Role upgrades always apply (guest/member → admin, guest → member, …).
+ * - Admins are never demoted by accepting a lower-role invite.
+ * - `member` → `guest` is allowed so a pending guest invite can override a
+ *   domain auto-join `member` row (the race this helper was introduced for).
  */
 export function shouldApplyInvitationRoleToMembership(opts: {
   existingRole: "owner" | "admin" | "member" | "guest";
   invitationRole: "owner" | "admin" | "member" | "guest";
 }): boolean {
   if (opts.existingRole === "owner") return false;
-  return (
-    membershipRoleFromInvitation(opts.invitationRole) !== opts.existingRole
-  );
+  const next = membershipRoleFromInvitation(opts.invitationRole);
+  if (next === opts.existingRole) return false;
+  if (opts.existingRole === "member" && next === "guest") return true;
+  return roleAtLeast(next, opts.existingRole);
+}
+
+/** True when the actor's email is at the domain they want to claim. */
+export function actorCanClaimAutoJoinDomain(opts: {
+  actorEmail: string;
+  domain: string;
+}): boolean {
+  return emailDomainOf(opts.actorEmail) === opts.domain;
 }
 
 /**

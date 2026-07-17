@@ -199,7 +199,8 @@ export const workspaces = pgTable(
     uniqueIndex("workspaces_personal_owner_uidx")
       .on(t.createdById)
       .where(sql`${t.isPersonal}`),
-    index("workspaces_auto_join_domain_idx")
+    // At most one workspace may claim a given email domain for auto-join.
+    uniqueIndex("workspaces_auto_join_domain_uidx")
       .on(t.autoJoinDomain)
       .where(sql`${t.autoJoinDomain} IS NOT NULL`),
   ],

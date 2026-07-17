@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, lt, ne } from "drizzle-orm";
 import { after } from "next/server";
 import { nanoid } from "nanoid";
 import {
@@ -17,6 +17,7 @@ import {
 } from "@/lib/permissions";
 import { sendWorkspaceInvitationEmail } from "@/lib/email";
 import {
+  actorCanClaimAutoJoinDomain,
   membershipRoleFromInvitation,
   shouldApplyInvitationRoleToMembership,
   validateAutoJoinDomain,
@@ -206,7 +207,9 @@ export async function removeMember(opts: {
 /**
  * Set (or clear) the verified-email domain whose users automatically join
  * this workspace as members. Owner/admin only; personal notebooks never
- * allow domain access.
+ * allow domain access. Claiming a domain requires the actor's own verified
+ * email to be at that domain, and each domain may be claimed by at most one
+ * workspace.
  */
 export async function setWorkspaceAutoJoinDomain(opts: {
   userId: string;
@@ -223,15 +226,45 @@ export async function setWorkspaceAutoJoinDomain(opts: {
   if (!workspace) throw new Error("NOT_FOUND");
   if (workspace.isPersonal) throw new Error("PERSONAL_WORKSPACE");
 
+  const db = getDb();
   let domain: string | null = null;
   const raw = opts.domain?.trim() ?? "";
   if (raw) {
     const result = validateAutoJoinDomain(raw);
     if (!result.ok) throw new Error(result.error);
     domain = result.domain;
+
+    const [actor] = await db
+      .select({
+        email: user.email,
+        emailVerified: user.emailVerified,
+      })
+      .from(user)
+      .where(eq(user.id, opts.userId))
+      .limit(1);
+    if (!actor?.emailVerified) throw new Error("EMAIL_UNVERIFIED");
+    if (
+      !actorCanClaimAutoJoinDomain({
+        actorEmail: actor.email,
+        domain,
+      })
+    ) {
+      throw new Error("DOMAIN_OWNERSHIP");
+    }
+
+    const [claimed] = await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(
+        and(
+          eq(workspaces.autoJoinDomain, domain),
+          ne(workspaces.id, opts.workspaceId),
+        ),
+      )
+      .limit(1);
+    if (claimed) throw new Error("DOMAIN_ALREADY_CLAIMED");
   }
 
-  const db = getDb();
   const [updated] = await db
     .update(workspaces)
     .set({ autoJoinDomain: domain, updatedAt: new Date() })

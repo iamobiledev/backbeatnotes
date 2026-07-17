@@ -71,6 +71,13 @@
       "when": 1784236911585,
       "tag": "0009_same_blonde_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784329939809,
+      "tag": "0010_dry_serpent_society",
+      "breakpoints": true
     }
   ]
 }

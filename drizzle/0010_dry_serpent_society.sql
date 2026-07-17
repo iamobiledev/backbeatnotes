@@ -1,0 +1,2 @@
+DROP INDEX "workspaces_auto_join_domain_idx";--> statement-breakpoint
+CREATE UNIQUE INDEX "workspaces_auto_join_domain_uidx" ON "workspaces" USING btree ("auto_join_domain") WHERE "workspaces"."auto_join_domain" IS NOT NULL;

@@ -190,10 +190,11 @@ To let everyone at your company join a workspace without invitations, a workspac
 
 Notes:
 
+- You can only claim the domain of **your own verified email**, and each domain can be claimed by **one** workspace.
 - Public email domains (gmail.com, outlook.com, …) are rejected.
 - Personal notebooks never allow domain access.
 - Joining is idempotent and never changes roles you set manually.
-- A **pending invitation** for the same email takes precedence over domain access (so a Viewer/guest invite is not silently upgraded to Editor by auto-join). Accepting the invite applies the invited role even if a membership row already exists.
+- A **pending invitation** for the same email takes precedence over domain access (so a Viewer/guest invite is not silently upgraded to Editor by auto-join). Accepting the invite upgrades roles when needed, and can apply a guest invite over an auto-joined Editor row, but never demotes an owner or admin.
 - While domain access is on, a removed member re-joins on their next sign-in — turn it off first when evicting someone with a matching email.
 
 ### 6. Configure email delivery

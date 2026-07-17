@@ -77,6 +77,11 @@ const FRIENDLY_ERRORS: Record<string, string> = {
   INVALID_DOMAIN: "Enter a domain like yourcompany.com.",
   PUBLIC_EMAIL_DOMAIN:
     "Public email domains like gmail.com can't be used for automatic access.",
+  DOMAIN_OWNERSHIP:
+    "You can only enable domain access for the domain of your own verified email address.",
+  DOMAIN_ALREADY_CLAIMED:
+    "Another workspace already uses that domain for automatic access.",
+  EMAIL_UNVERIFIED: "Verify your email before enabling domain access.",
   NOT_A_WIKI: "Only wikis can be locked.",
   CREATOR_PERMANENT: "The page creator always keeps full access.",
   EDIT_CONFLICT:

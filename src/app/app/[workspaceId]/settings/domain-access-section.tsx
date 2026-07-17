@@ -61,8 +61,9 @@ export function DomainAccessSection({
       </h2>
       <p className="mt-1 text-sm text-[var(--muted-foreground)]">
         Anyone who signs in with a verified email at this domain automatically
-        joins this workspace as an Editor. You can change each person&apos;s
-        role in Members below.
+        joins this workspace as an Editor. You can only enable the domain of
+        your own verified email, and each domain can be claimed by one
+        workspace. Adjust each person&apos;s role in Members below.
       </p>
       <form
         className="mt-3 flex max-w-md gap-2"
