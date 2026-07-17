@@ -1,0 +1,2 @@
+ALTER TABLE "workspaces" ADD COLUMN "auto_join_domain" text;--> statement-breakpoint
+CREATE INDEX "workspaces_auto_join_domain_idx" ON "workspaces" USING btree ("auto_join_domain") WHERE "workspaces"."auto_join_domain" IS NOT NULL;

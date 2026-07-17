@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, lt, ne } from "drizzle-orm";
 import { after } from "next/server";
 import { nanoid } from "nanoid";
 import {
@@ -16,9 +16,16 @@ import {
   canManageWorkspace,
 } from "@/lib/permissions";
 import { sendWorkspaceInvitationEmail } from "@/lib/email";
+import {
+  actorCanClaimAutoJoinDomain,
+  membershipRoleFromInvitation,
+  shouldApplyInvitationRoleToMembership,
+  validateAutoJoinDomain,
+} from "@/lib/workspaces/auto-join";
 import { slugify } from "@/lib/utils";
 import { brand } from "@/config/brand";
 import { logger } from "@/lib/logger";
+import { postgresErrorCode } from "@/lib/db/errors";
 
 export async function createWorkspace(opts: {
   userId: string;
@@ -198,6 +205,92 @@ export async function removeMember(opts: {
   await db.delete(workspaceMembers).where(eq(workspaceMembers.id, target.id));
 }
 
+/**
+ * Set (or clear) the verified-email domain whose users automatically join
+ * this workspace as members. Owner/admin only; personal notebooks never
+ * allow domain access. Claiming a domain requires the actor's own verified
+ * email to be at that domain, and each domain may be claimed by at most one
+ * workspace.
+ */
+export async function setWorkspaceAutoJoinDomain(opts: {
+  userId: string;
+  workspaceId: string;
+  domain: string | null;
+}) {
+  const membership = await requireMembership(
+    opts.userId,
+    opts.workspaceId,
+    "admin",
+  );
+  if (!canManageWorkspace(membership.role)) throw new Error("FORBIDDEN");
+  const workspace = await getWorkspaceById(opts.workspaceId);
+  if (!workspace) throw new Error("NOT_FOUND");
+  if (workspace.isPersonal) throw new Error("PERSONAL_WORKSPACE");
+
+  const db = getDb();
+  let domain: string | null = null;
+  const raw = opts.domain?.trim() ?? "";
+  if (raw) {
+    const result = validateAutoJoinDomain(raw);
+    if (!result.ok) throw new Error(result.error);
+    domain = result.domain;
+
+    const [actor] = await db
+      .select({
+        email: user.email,
+        emailVerified: user.emailVerified,
+      })
+      .from(user)
+      .where(eq(user.id, opts.userId))
+      .limit(1);
+    if (!actor?.emailVerified) throw new Error("EMAIL_UNVERIFIED");
+    if (
+      !actorCanClaimAutoJoinDomain({
+        actorEmail: actor.email,
+        domain,
+      })
+    ) {
+      throw new Error("DOMAIN_OWNERSHIP");
+    }
+
+    const [claimed] = await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(
+        and(
+          eq(workspaces.autoJoinDomain, domain),
+          ne(workspaces.id, opts.workspaceId),
+        ),
+      )
+      .limit(1);
+    if (claimed) throw new Error("DOMAIN_ALREADY_CLAIMED");
+  }
+
+  let updated;
+  try {
+    [updated] = await db
+      .update(workspaces)
+      .set({ autoJoinDomain: domain, updatedAt: new Date() })
+      .where(eq(workspaces.id, opts.workspaceId))
+      .returning();
+  } catch (error) {
+    // Concurrent claimants can pass the pre-check; the unique index still
+    // rejects the loser — surface the same friendly error as the pre-check.
+    if (domain && postgresErrorCode(error) === "23505") {
+      throw new Error("DOMAIN_ALREADY_CLAIMED");
+    }
+    throw error;
+  }
+
+  logger.info("workspace.auto_join_domain_updated", {
+    workspaceId: opts.workspaceId,
+    userId: opts.userId,
+    domain: domain ?? "(cleared)",
+  });
+
+  return updated;
+}
+
 export async function renameWorkspace(opts: {
   userId: string;
   workspaceId: string;
@@ -372,13 +465,27 @@ export async function acceptInvitation(opts: {
     )
     .limit(1);
 
+  const invitedRole = membershipRoleFromInvitation(invitation.role);
   if (existing.length === 0) {
     await db.insert(workspaceMembers).values({
       id: nanoid(),
       workspaceId: invitation.workspaceId,
       userId: opts.userId,
-      role: invitation.role === "owner" ? "admin" : invitation.role,
+      role: invitedRole,
     });
+  } else if (
+    shouldApplyInvitationRoleToMembership({
+      existingRole: existing[0].role,
+      invitationRole: invitation.role,
+    })
+  ) {
+    // Domain auto-join (or an earlier membership) may have created a `member`
+    // row before the invite was accepted — apply the invited role so guest /
+    // admin invites are not silently ignored.
+    await db
+      .update(workspaceMembers)
+      .set({ role: invitedRole, updatedAt: new Date() })
+      .where(eq(workspaceMembers.id, existing[0].id));
   }
 
   await db

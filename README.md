@@ -10,6 +10,7 @@ BackBeat Notes is a Vercel-first collaborative knowledge base built with Next.js
 - **Wikis** — a second document type for canonical team knowledge. Wikis can be **locked** by admins: locked wikis are read-only for everyone except workspace owners/admins and platform admins.
 - **Change log** — every page has an Activity history (who created/edited/renamed/moved/trashed/published/locked it, when) with autosave edits coalesced into readable sessions, alongside restorable version snapshots.
 - **Organization** — favorites, recently-viewed, soft-delete trash with restore (nothing is permanently deleted from the UI), and automatic version snapshots on significant edits with preview + restore.
+- **Google sign-in & domain access** — optional "Continue with Google" (Better Auth Google OAuth) so teams sign in with their existing Google Workspace accounts; `GOOGLE_HOSTED_DOMAIN` restricts Google sign-in to one org (enforced against the id token's verified `hd` claim). Workspace admins can enable **Domain access** (Settings → Domain access): anyone who signs in with a verified email at the company domain automatically joins the workspace as an Editor — no invitations needed; individual roles stay manually adjustable in Members.
 - **Sharing & permissions** — Notion-style page sharing from the **Share** popover (Share | Publish tabs): invite anyone by email with **Full access / Can edit / Can view**, including people outside the workspace (new users set a password inside the invitation flow, then confirm access); a per-page **General access** switch between *Only people invited* and *Everyone at {workspace}*; a **Shared** sidebar section for pages shared with you. Every user also gets a private **Personal notebook** (its pages are invite-only but individually shareable); team workspaces where every member sees every workspace-visible page (admins manage members, editors write, viewers read); publish-to-web for public read-only pages (independent of in-app access); and a request-access screen (never an error) for links you can't open.
 - **User types** — platform `admin` (creates team workspaces, locks/edits locked wikis) and `developer` (regular user). The first registered user automatically becomes an admin.
 - **Email notifications** — invitation emails, "you've joined a workspace" + "your invite was accepted" emails, and document-activity alerts to a page's creator and previous editors (throttled to one email per person per page per 6 hours, per-user opt-out in Settings → Notifications). Pending invitations show when the email was sent, with one-click resend.
@@ -25,7 +26,7 @@ BackBeat Notes is a Vercel-first collaborative knowledge base built with Next.js
 | UI | Tailwind CSS + shadcn/ui |
 | Editor | Tiptap |
 | Database | Neon Serverless Postgres + Drizzle ORM |
-| Auth | Better Auth (email/password, verification, resets, sessions) |
+| Auth | Better Auth (email/password, Google sign-in, verification, resets, sessions) |
 | Email | Resend behind a reusable provider interface |
 | Files | Vercel Blob (+ metadata in Neon) |
 | Search | Neon Postgres FTS + `pg_trgm` + optional `pgvector` semantic paragraphs |
@@ -88,6 +89,8 @@ See [`.env.example`](./.env.example) for the full list. Required for a working d
 | `NEXT_PUBLIC_APP_URL` | Public | Canonical app URL (no trailing slash) |
 | `BETTER_AUTH_URL` | Server | Optional; defaults to `NEXT_PUBLIC_APP_URL` |
 | `RESEND_API_KEY` / `EMAIL_FROM` | Server | Transactional email (console fallback in local) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Server | Optional — enables "Continue with Google" sign-in |
+| `GOOGLE_HOSTED_DOMAIN` | Server | Optional — restrict Google sign-in to one Google Workspace org |
 | `BLOB_READ_WRITE_TOKEN` | Server | Vercel Blob store token |
 | `CRON_SECRET` | Server | Bearer token for Cron routes |
 | `SLACK_CLIENT_ID` | Server | Slack app client id (optional — enables the Slack integration) |
@@ -166,6 +169,33 @@ Private workspace files use private Blob access. Public document assets may use 
 4. Sessions are stored in Neon (`session`, `account`, `verification`, `user`).
 
 Supported flows: email/password, email verification, password reset, secure session cookies, invitation-based password setup/sign-in followed by explicit acceptance, sign out (current device), and sign out all devices (`POST /api/auth/revoke-sessions`). Direct `/sign-up` remains functional but is not currently advertised in the public UI.
+
+#### Google sign-in (optional)
+
+Let your team sign in with their existing Google accounts — no separate password:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials) (a project in your org), configure the **OAuth consent screen**. If everyone is in one Google Workspace org, choose **Internal**.
+2. Create an **OAuth client ID** of type **Web application** and add the authorized redirect URIs:
+   - Production: `https://your-domain.com/api/auth/callback/google`
+   - Local: `http://localhost:3000/api/auth/callback/google`
+3. Set the environment variables and redeploy:
+   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — enables the **Continue with Google** button on `/sign-in` and `/sign-up` (hidden when unset).
+   - `GOOGLE_HOSTED_DOMAIN` (optional, e.g. `rowsone.com`) — restricts Google sign-in to that Google Workspace org. It is sent as the account-picker hint **and enforced server-side** against the verified `hd` claim of Google's id token; other Google accounts are rejected (they can still use email/password or invitations).
+
+Google accounts arrive with a verified email, so they skip the verification-email step. A Google sign-in whose email matches an existing verified email/password user links into the same account. New Google users get the default `developer` platform type (the regular-user type).
+
+#### Domain access (automatic workspace membership)
+
+To let everyone at your company join a workspace without invitations, a workspace owner/admin opens **Settings → Domain access** and enters the company email domain (e.g. `rowsone.com`). From then on, anyone who signs in with a **verified** email at that domain — via Google or email/password — automatically joins that workspace as an **Editor** (`member` role). Adjust individual roles afterwards in **Settings → Members**.
+
+Notes:
+
+- You can only claim the domain of **your own verified email**, and each domain can be claimed by **one** workspace.
+- Public email domains (gmail.com, outlook.com, …) are rejected.
+- Personal notebooks never allow domain access.
+- Joining is idempotent and never changes roles you set manually.
+- A **pending invitation** for the same email takes precedence over domain access (so a Viewer/guest invite is not silently upgraded to Editor by auto-join). Accepting the invite upgrades roles when needed, and can apply a guest invite over an auto-joined Editor row, but never demotes an owner or admin.
+- While domain access is on, a removed member re-joins on their next sign-in — turn it off first when evicting someone with a matching email.
 
 ### 6. Configure email delivery
 

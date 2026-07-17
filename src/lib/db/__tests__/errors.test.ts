@@ -14,6 +14,13 @@ describe("PostgreSQL error classification", () => {
     expect(postgresErrorCode(error)).toBe("42P01");
   });
 
+  it("surfaces unique-violation codes used by domain-claim races", () => {
+    const error = new Error("Failed query", {
+      cause: Object.assign(new Error("duplicate key value"), { code: "23505" }),
+    });
+    expect(postgresErrorCode(error)).toBe("23505");
+  });
+
   it("matches the missing relation on the same PostgreSQL error layer", () => {
     const error = new Error(
       'Failed query: select * from "document_search_blocks"',

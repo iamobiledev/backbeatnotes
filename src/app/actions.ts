@@ -41,6 +41,7 @@ import {
   updateMemberRole,
   removeMember,
   renameWorkspace,
+  setWorkspaceAutoJoinDomain,
   revokeInvitation,
   resendInvitation,
   listWorkspaceMembers,
@@ -73,6 +74,14 @@ const FRIENDLY_ERRORS: Record<string, string> = {
   INVITATION_EXPIRED: "This invitation has expired.",
   EMAIL_MISMATCH: "This invitation was sent to a different email address.",
   ADMIN_ONLY: "Only platform admins can create workspaces.",
+  INVALID_DOMAIN: "Enter a domain like yourcompany.com.",
+  PUBLIC_EMAIL_DOMAIN:
+    "Public email domains like gmail.com can't be used for automatic access.",
+  DOMAIN_OWNERSHIP:
+    "You can only enable domain access for the domain of your own verified email address.",
+  DOMAIN_ALREADY_CLAIMED:
+    "Another workspace already uses that domain for automatic access.",
+  EMAIL_UNVERIFIED: "Verify your email before enabling domain access.",
   NOT_A_WIKI: "Only wikis can be locked.",
   CREATOR_PERMANENT: "The page creator always keeps full access.",
   EDIT_CONFLICT:
@@ -126,6 +135,28 @@ export async function actionRenameWorkspace(input: {
       .parse(input);
     await renameWorkspace({ userId: session.user.id, ...parsed });
     revalidatePath(`/app/${parsed.workspaceId}`);
+    return undefined;
+  });
+}
+
+export async function actionSetWorkspaceAutoJoinDomain(input: {
+  workspaceId: string;
+  domain: string | null;
+}): Promise<ActionResult<undefined>> {
+  const session = await requireVerifiedSession();
+  return run(async () => {
+    const parsed = z
+      .object({
+        workspaceId: z.string().min(1),
+        domain: z.string().trim().max(253).nullable(),
+      })
+      .parse(input);
+    await setWorkspaceAutoJoinDomain({
+      userId: session.user.id,
+      workspaceId: parsed.workspaceId,
+      domain: parsed.domain,
+    });
+    revalidatePath(`/app/${parsed.workspaceId}/settings`);
     return undefined;
   });
 }

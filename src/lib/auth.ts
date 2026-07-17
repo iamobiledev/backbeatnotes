@@ -4,7 +4,12 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { sql } from "drizzle-orm";
 import { getDb, user, session, account, verification } from "@/db";
-import { getAppUrl, getAuthAllowedHosts, getServerEnv } from "@/env/server";
+import {
+  getAppUrl,
+  getAuthAllowedHosts,
+  getGoogleAuthConfig,
+  getServerEnv,
+} from "@/env/server";
 import {
   sendPasswordResetEmail,
   sendVerificationEmail,
@@ -14,6 +19,9 @@ import {
   invitationBelongsToEmail,
   INVITATION_SIGN_UP_HEADER,
 } from "@/lib/invitations";
+import { autoJoinWorkspacesForUser } from "@/lib/workspaces/auto-join";
+import { assertGoogleEmailMatchesHostedDomain } from "@/lib/auth/google-hosted-domain";
+import { logger } from "@/lib/logger";
 
 /**
  * Better Auth configured with Neon (via Drizzle) as the persistent store.
@@ -23,6 +31,7 @@ export function createAuth() {
   const env = getServerEnv();
   const db = getDb();
   const fallbackUrl = getAppUrl();
+  const google = getGoogleAuthConfig();
 
   return betterAuth({
     appName: brand.name,
@@ -54,6 +63,45 @@ export function createAuth() {
       requireEmailVerification: true,
       sendResetPassword: async ({ user: u, url }) => {
         await sendPasswordResetEmail({ to: u.email, url });
+      },
+    },
+    // Google sign-in (optional — enabled by GOOGLE_CLIENT_ID/SECRET).
+    // When `GOOGLE_HOSTED_DOMAIN` is set, domain restriction is enforced by:
+    //  1. Passing `hd` as Google's account-picker hint.
+    //  2. Better Auth (≥1.6.16) rejecting tokens whose verified `hd` claim
+    //     does not match (in both verifyIdToken and getUserInfo). Do not
+    //     override `getUserInfo` — a custom callback would replace that check.
+    //  3. `mapProfileToUser` below re-checks the verified `hd` claim (not the
+    //     email suffix — Workspace alias emails can differ from `hd`).
+    ...(google
+      ? {
+          socialProviders: {
+            google: {
+              clientId: google.clientId,
+              clientSecret: google.clientSecret,
+              prompt: "select_account" as const,
+              ...(google.hostedDomain ? { hd: google.hostedDomain } : {}),
+              mapProfileToUser: (profile: {
+                email?: string | null;
+                hd?: string | null;
+              }) => {
+                assertGoogleEmailMatchesHostedDomain(
+                  profile,
+                  google.hostedDomain,
+                );
+                return {};
+              },
+            },
+          },
+        }
+      : {}),
+    account: {
+      accountLinking: {
+        // A Google sign-in whose verified email matches an existing
+        // (verified) email/password user links into that same user row —
+        // teammates keep one account when they switch to Google.
+        enabled: true,
+        trustedProviders: ["google"],
       },
     },
     emailVerification: {
@@ -118,6 +166,41 @@ export function createAuth() {
                 role: Number(count) === 0 ? "admin" : "developer",
               },
             };
+          },
+        },
+      },
+      session: {
+        create: {
+          // Domain auto-join: whenever a session is created (email/password
+          // sign-in, Google OAuth callback, post-verification auto sign-in),
+          // idempotently add verified users to workspaces whose
+          // `autoJoinDomain` matches their email domain. Failures are logged
+          // and never block sign-in.
+          after: async (newSession) => {
+            try {
+              const [u] = await db
+                .select({
+                  id: user.id,
+                  email: user.email,
+                  emailVerified: user.emailVerified,
+                })
+                .from(user)
+                .where(sql`${user.id} = ${newSession.userId}`)
+                .limit(1);
+              if (u) {
+                await autoJoinWorkspacesForUser({
+                  userId: u.id,
+                  email: u.email,
+                  emailVerified: u.emailVerified,
+                });
+              }
+            } catch (error) {
+              logger.error("workspace.auto_join_failed", {
+                userId: newSession.userId,
+                error:
+                  error instanceof Error ? error.message : String(error),
+              });
+            }
           },
         },
       },
