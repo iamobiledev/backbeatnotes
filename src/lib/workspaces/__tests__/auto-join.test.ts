@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   emailDomainOf,
+  excludeWorkspacesWithPendingInvite,
+  membershipRoleFromInvitation,
   normalizeAutoJoinDomain,
+  shouldApplyInvitationRoleToMembership,
   validateAutoJoinDomain,
   PUBLIC_EMAIL_DOMAINS,
 } from "@/lib/workspaces/auto-join";
@@ -90,5 +93,64 @@ describe("validateAutoJoinDomain", () => {
     for (const domain of PUBLIC_EMAIL_DOMAINS) {
       expect(validateAutoJoinDomain(domain).ok).toBe(false);
     }
+  });
+});
+
+describe("excludeWorkspacesWithPendingInvite", () => {
+  it("removes workspaces that already have a pending invite", () => {
+    expect(
+      excludeWorkspacesWithPendingInvite(
+        ["ws-a", "ws-b", "ws-c"],
+        ["ws-b", "ws-d"],
+      ),
+    ).toEqual(["ws-a", "ws-c"]);
+  });
+
+  it("keeps all workspaces when no invites are pending", () => {
+    expect(excludeWorkspacesWithPendingInvite(["ws-a"], [])).toEqual(["ws-a"]);
+  });
+});
+
+describe("membershipRoleFromInvitation", () => {
+  it("maps owner invites to admin membership", () => {
+    expect(membershipRoleFromInvitation("owner")).toBe("admin");
+    expect(membershipRoleFromInvitation("admin")).toBe("admin");
+    expect(membershipRoleFromInvitation("member")).toBe("member");
+    expect(membershipRoleFromInvitation("guest")).toBe("guest");
+  });
+});
+
+describe("shouldApplyInvitationRoleToMembership", () => {
+  it("applies guest/admin over an auto-joined member row", () => {
+    expect(
+      shouldApplyInvitationRoleToMembership({
+        existingRole: "member",
+        invitationRole: "guest",
+      }),
+    ).toBe(true);
+    expect(
+      shouldApplyInvitationRoleToMembership({
+        existingRole: "member",
+        invitationRole: "admin",
+      }),
+    ).toBe(true);
+  });
+
+  it("never demotes an owner via invitation accept", () => {
+    expect(
+      shouldApplyInvitationRoleToMembership({
+        existingRole: "owner",
+        invitationRole: "guest",
+      }),
+    ).toBe(false);
+  });
+
+  it("skips a no-op when roles already match", () => {
+    expect(
+      shouldApplyInvitationRoleToMembership({
+        existingRole: "guest",
+        invitationRole: "guest",
+      }),
+    ).toBe(false);
   });
 });

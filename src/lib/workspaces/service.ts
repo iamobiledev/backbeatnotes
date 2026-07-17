@@ -16,7 +16,11 @@ import {
   canManageWorkspace,
 } from "@/lib/permissions";
 import { sendWorkspaceInvitationEmail } from "@/lib/email";
-import { validateAutoJoinDomain } from "@/lib/workspaces/auto-join";
+import {
+  membershipRoleFromInvitation,
+  shouldApplyInvitationRoleToMembership,
+  validateAutoJoinDomain,
+} from "@/lib/workspaces/auto-join";
 import { slugify } from "@/lib/utils";
 import { brand } from "@/config/brand";
 import { logger } from "@/lib/logger";
@@ -417,13 +421,27 @@ export async function acceptInvitation(opts: {
     )
     .limit(1);
 
+  const invitedRole = membershipRoleFromInvitation(invitation.role);
   if (existing.length === 0) {
     await db.insert(workspaceMembers).values({
       id: nanoid(),
       workspaceId: invitation.workspaceId,
       userId: opts.userId,
-      role: invitation.role === "owner" ? "admin" : invitation.role,
+      role: invitedRole,
     });
+  } else if (
+    shouldApplyInvitationRoleToMembership({
+      existingRole: existing[0].role,
+      invitationRole: invitation.role,
+    })
+  ) {
+    // Domain auto-join (or an earlier membership) may have created a `member`
+    // row before the invite was accepted — apply the invited role so guest /
+    // admin invites are not silently ignored.
+    await db
+      .update(workspaceMembers)
+      .set({ role: invitedRole, updatedAt: new Date() })
+      .where(eq(workspaceMembers.id, existing[0].id));
   }
 
   await db

@@ -172,4 +172,102 @@ test.describe.serial("domain auto-join", () => {
       ),
     ).toBe("0");
   });
+
+  test("pending guest invite blocks auto-join and applies guest on accept", async ({
+    browser,
+  }) => {
+    const guestEmail = `guest-${runId}@${domain}`;
+    const racedEmail = `raced-${runId}@${domain}`;
+    const guestToken = `guest-invite-${runId}`;
+    const racedToken = `raced-invite-${runId}`;
+    const demoUserId = psql(
+      `SELECT id FROM "user" WHERE email='${DEMO_EMAIL}' LIMIT 1`,
+    );
+    expect(demoUserId).toBeTruthy();
+
+    psql(
+      `INSERT INTO workspace_invitations (id, workspace_id, email, role, token, status, invited_by_id, expires_at)
+       VALUES
+       (
+         'inv-guest-${runId}',
+         '${workspaceId}',
+         '${guestEmail}',
+         'guest',
+         '${guestToken}',
+         'pending',
+         '${demoUserId}',
+         NOW() + INTERVAL '7 days'
+       ),
+       (
+         'inv-raced-${runId}',
+         '${workspaceId}',
+         '${racedEmail}',
+         'guest',
+         '${racedToken}',
+         'pending',
+         '${demoUserId}',
+         NOW() + INTERVAL '7 days'
+       )`,
+    );
+
+    const { context, page } = await registerAndSignIn(
+      browser,
+      guestEmail,
+      "Domain Guest",
+    );
+
+    // Auto-join must not create a member row while the guest invite is pending.
+    expect(
+      psql(
+        `SELECT count(*) FROM workspace_members wm JOIN "user" u ON u.id=wm.user_id WHERE wm.workspace_id='${workspaceId}' AND u.email='${guestEmail}'`,
+      ),
+    ).toBe("0");
+
+    await page.goto(`/invitations/${guestToken}`);
+    await expect(
+      page.getByRole("button", { name: "Accept invitation" }),
+    ).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: "Accept invitation" }).click();
+    await page.waitForURL(`/app/${workspaceId}`, { timeout: 30_000 });
+
+    expect(
+      psql(
+        `SELECT wm.role FROM workspace_members wm JOIN "user" u ON u.id=wm.user_id WHERE wm.workspace_id='${workspaceId}' AND u.email='${guestEmail}'`,
+      ),
+    ).toBe("guest");
+    expect(
+      psql(
+        `SELECT status FROM workspace_invitations WHERE token='${guestToken}'`,
+      ),
+    ).toBe("accepted");
+    await context.close();
+
+    // Race cover: if a member row already exists (e.g. auto-join won), accept
+    // still applies the invited guest role instead of leaving them as member.
+    const raced = await registerAndSignIn(
+      browser,
+      racedEmail,
+      "Raced Guest",
+    );
+    const racedUserId = psql(
+      `SELECT id FROM "user" WHERE email='${racedEmail}' LIMIT 1`,
+    );
+    psql(
+      `INSERT INTO workspace_members (id, workspace_id, user_id, role)
+       VALUES ('wm-raced-${runId}', '${workspaceId}', '${racedUserId}', 'member')
+       ON CONFLICT DO NOTHING`,
+    );
+    await raced.page.goto(`/invitations/${racedToken}`);
+    await expect(
+      raced.page.getByRole("button", { name: "Accept invitation" }),
+    ).toBeVisible({ timeout: 15_000 });
+    await raced.page.getByRole("button", { name: "Accept invitation" }).click();
+    await raced.page.waitForURL(`/app/${workspaceId}`, { timeout: 30_000 });
+    expect(
+      psql(
+        `SELECT wm.role FROM workspace_members wm JOIN "user" u ON u.id=wm.user_id WHERE wm.workspace_id='${workspaceId}' AND u.email='${racedEmail}'`,
+      ),
+    ).toBe("guest");
+    await raced.context.close();
+  });
 });

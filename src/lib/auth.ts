@@ -65,9 +65,12 @@ export function createAuth() {
       },
     },
     // Google sign-in (optional — enabled by GOOGLE_CLIENT_ID/SECRET).
-    // `hd` restricts sign-in to a Google Workspace org: it is sent as the
-    // account-picker hint AND enforced against the verified `hd` claim of
-    // the returned id token, so accounts outside the org are rejected.
+    // When `GOOGLE_HOSTED_DOMAIN` is set we pass it as Better Auth's `hd`
+    // option. Better Auth (≥1.6.16) sends that value as Google's account-
+    // picker hint *and* enforces it in `verifyIdToken` / `getUserInfo` via
+    // `isGoogleHostedDomainAllowed` against the verified id-token `hd`
+    // claim. Do not override `getUserInfo` here — a custom callback replaces
+    // that built-in check.
     ...(google
       ? {
           socialProviders: {

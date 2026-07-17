@@ -193,6 +193,7 @@ Notes:
 - Public email domains (gmail.com, outlook.com, …) are rejected.
 - Personal notebooks never allow domain access.
 - Joining is idempotent and never changes roles you set manually.
+- A **pending invitation** for the same email takes precedence over domain access (so a Viewer/guest invite is not silently upgraded to Editor by auto-join). Accepting the invite applies the invited role even if a membership row already exists.
 - While domain access is on, a removed member re-joins on their next sign-in — turn it off first when evicting someone with a matching email.
 
 ### 6. Configure email delivery

@@ -1,7 +1,12 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { getDb, workspaces, workspaceMembers } from "@/db";
+import {
+  getDb,
+  workspaces,
+  workspaceMembers,
+  workspaceInvitations,
+} from "@/db";
 import { logger } from "@/lib/logger";
 
 /**
@@ -10,6 +15,11 @@ import { logger } from "@/lib/logger";
  * Workspaces may declare an `autoJoinDomain` (e.g. "rowsone.com"). Every time
  * a session is created for a user whose *verified* email is at that domain,
  * the user is idempotently added to the workspace as a plain `member`.
+ *
+ * Pending, unexpired invitations for the same email take precedence: domain
+ * auto-join skips those workspaces so an explicit guest/admin invite cannot be
+ * silently overwritten by a `member` row. Existing memberships (of any role)
+ * are never modified by auto-join.
  *
  * This module intentionally imports only the db + logger so it can be used
  * from `src/lib/auth.ts` without creating import cycles.
@@ -76,6 +86,42 @@ export function validateAutoJoinDomain(input: string): AutoJoinDomainValidation 
 }
 
 /**
+ * Drop workspace ids that have a pending invitation so auto-join cannot race
+ * ahead of explicit invite roles (guest/admin).
+ */
+export function excludeWorkspacesWithPendingInvite(
+  workspaceIds: readonly string[],
+  pendingInviteWorkspaceIds: Iterable<string>,
+): string[] {
+  const blocked = new Set(pendingInviteWorkspaceIds);
+  return workspaceIds.filter((id) => !blocked.has(id));
+}
+
+/**
+ * Map an invitation role onto a workspace membership role.
+ * Invitations may still use legacy `owner`; memberships store that as `admin`.
+ */
+export function membershipRoleFromInvitation(
+  invitationRole: "owner" | "admin" | "member" | "guest",
+): "admin" | "member" | "guest" {
+  return invitationRole === "owner" ? "admin" : invitationRole;
+}
+
+/**
+ * Decide whether accepting an invitation should change an existing membership.
+ * Owners are never demoted via invitation accept.
+ */
+export function shouldApplyInvitationRoleToMembership(opts: {
+  existingRole: "owner" | "admin" | "member" | "guest";
+  invitationRole: "owner" | "admin" | "member" | "guest";
+}): boolean {
+  if (opts.existingRole === "owner") return false;
+  return (
+    membershipRoleFromInvitation(opts.invitationRole) !== opts.existingRole
+  );
+}
+
+/**
  * Add the user as a `member` to every team workspace whose auto-join domain
  * matches their verified email domain. Idempotent: existing memberships (of
  * any role) are never modified. Returns the ids of workspaces actually joined.
@@ -101,13 +147,33 @@ export async function autoJoinWorkspacesForUser(opts: {
     );
   if (matches.length === 0) return [];
 
+  const matchIds = matches.map((workspace) => workspace.id);
+  const email = opts.email.trim().toLowerCase();
+  const pendingInvites = await db
+    .select({ workspaceId: workspaceInvitations.workspaceId })
+    .from(workspaceInvitations)
+    .where(
+      and(
+        eq(workspaceInvitations.email, email),
+        eq(workspaceInvitations.status, "pending"),
+        gt(workspaceInvitations.expiresAt, new Date()),
+        inArray(workspaceInvitations.workspaceId, matchIds),
+      ),
+    );
+
+  const eligibleIds = excludeWorkspacesWithPendingInvite(
+    matchIds,
+    pendingInvites.map((row) => row.workspaceId),
+  );
+  if (eligibleIds.length === 0) return [];
+
   const joined: string[] = [];
-  for (const workspace of matches) {
+  for (const workspaceId of eligibleIds) {
     const inserted = await db
       .insert(workspaceMembers)
       .values({
         id: nanoid(),
-        workspaceId: workspace.id,
+        workspaceId,
         userId: opts.userId,
         role: "member",
       })
@@ -115,7 +181,7 @@ export async function autoJoinWorkspacesForUser(opts: {
         target: [workspaceMembers.workspaceId, workspaceMembers.userId],
       })
       .returning({ id: workspaceMembers.id });
-    if (inserted.length > 0) joined.push(workspace.id);
+    if (inserted.length > 0) joined.push(workspaceId);
   }
 
   if (joined.length > 0) {
