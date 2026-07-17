@@ -53,7 +53,6 @@ import {
   actionMoveDocument,
 } from "@/app/actions";
 import type { DocumentTreeNode, WorkspaceSummary } from "@/lib/documents/types";
-import { DocumentTree } from "./document-tree";
 import { DROP_TARGET_CLASS, useRootDropTarget } from "./tree-dnd";
 
 const CommandPalette = dynamic(() =>
@@ -63,6 +62,16 @@ const CommandPalette = dynamic(() =>
 );
 const ShortcutsDialog = dynamic(() =>
   import("./shortcuts-dialog").then((module) => module.ShortcutsDialog),
+);
+// Keep the shell's initial hydrate light: tree menus/DnD load after first paint
+// so clicks on workspace/Recent cards are not blocked by long input delay.
+const DocumentTree = dynamic(
+  () => import("./document-tree").then((module) => module.DocumentTree),
+  {
+    loading: () => (
+      <p className="px-2 py-1 text-[var(--muted-foreground)]">Loading pages…</p>
+    ),
+  },
 );
 
 type WorkspaceTree = {
