@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { and, eq, lt, ne } from "drizzle-orm";
+import { and, eq, lt, ne, sql } from "drizzle-orm";
 import { after } from "next/server";
 import { nanoid } from "nanoid";
 import {
@@ -227,6 +227,41 @@ export async function updateMemberRole(opts: {
     .update(workspaceMembers)
     .set({ role: opts.role, updatedAt: new Date() })
     .where(eq(workspaceMembers.id, target.id));
+}
+
+type OwnershipTransferStatus =
+  | "OK"
+  | "NOT_FOUND"
+  | "PERSONAL_WORKSPACE"
+  | "OWNER_ONLY"
+  | "CANNOT_TRANSFER_TO_SELF"
+  | "TRANSFER_TARGET_NOT_MEMBER"
+  | "ALREADY_OWNER";
+
+/**
+ * Atomically transfer singular team-workspace ownership.
+ *
+ * PostgreSQL owns the transaction boundary because the production Neon HTTP
+ * Drizzle driver does not support callback transactions. Migration 0011
+ * installs this security-invoker function and a unique owner index. The
+ * function locks the workspace and both memberships before changing roles.
+ */
+export async function transferWorkspaceOwnership(opts: {
+  userId: string;
+  workspaceId: string;
+  targetUserId: string;
+}) {
+  const result = await getDb().execute(sql`
+    SELECT transfer_workspace_ownership(
+      ${opts.workspaceId},
+      ${opts.userId},
+      ${opts.targetUserId}
+    ) AS status
+  `);
+  const status = result.rows[0]?.status as OwnershipTransferStatus | undefined;
+  if (status !== "OK") {
+    throw new Error(status ?? "OWNERSHIP_TRANSFER_FAILED");
+  }
 }
 
 export async function removeMember(opts: {

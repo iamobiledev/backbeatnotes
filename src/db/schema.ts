@@ -226,6 +226,9 @@ export const workspaceMembers = pgTable(
   },
   (t) => [
     uniqueIndex("workspace_members_ws_user_uidx").on(t.workspaceId, t.userId),
+    uniqueIndex("workspace_members_single_owner_uidx")
+      .on(t.workspaceId)
+      .where(sql`${t.role} = 'owner'`),
     index("workspace_members_user_idx").on(t.userId),
   ],
 );

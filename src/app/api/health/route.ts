@@ -17,6 +17,7 @@ export async function GET() {
     coreSchemaReady: boolean;
     searchSchemaReady: boolean;
     domainAccessSchemaReady: boolean;
+    ownershipSchemaReady: boolean;
     error?: "unavailable";
   };
   try {
@@ -43,7 +44,12 @@ export async function GET() {
             AND column_name = 'auto_join_domain'
         ) AS domain_access_column,
         to_regclass('public.workspaces_auto_join_domain_uidx') IS NOT NULL
-          AS domain_access_index
+          AS domain_access_index,
+        to_regclass('public.workspace_members_single_owner_uidx') IS NOT NULL
+          AS single_owner_index,
+        to_regprocedure(
+          'public.transfer_workspace_ownership(text,text,text)'
+        ) IS NOT NULL AS ownership_transfer_function
     `);
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const result = await Promise.race([
@@ -65,6 +71,8 @@ export async function GET() {
       search_vector?: boolean;
       domain_access_column?: boolean;
       domain_access_index?: boolean;
+      single_owner_index?: boolean;
+      ownership_transfer_function?: boolean;
     };
     database = {
       connected: true,
@@ -75,6 +83,9 @@ export async function GET() {
       domainAccessSchemaReady: Boolean(
         row.domain_access_column && row.domain_access_index,
       ),
+      ownershipSchemaReady: Boolean(
+        row.single_owner_index && row.ownership_transfer_function,
+      ),
     };
   } catch {
     database = {
@@ -82,6 +93,7 @@ export async function GET() {
       coreSchemaReady: false,
       searchSchemaReady: false,
       domainAccessSchemaReady: false,
+      ownershipSchemaReady: false,
       error: "unavailable",
     };
   }
@@ -96,7 +108,8 @@ export async function GET() {
     database.connected &&
     database.coreSchemaReady &&
     database.searchSchemaReady &&
-    database.domainAccessSchemaReady;
+    database.domainAccessSchemaReady &&
+    database.ownershipSchemaReady;
   let appUrlHost = "unknown";
   try {
     appUrlHost = new URL(getAppUrl()).host;

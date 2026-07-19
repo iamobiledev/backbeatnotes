@@ -13,6 +13,7 @@ const REQUIRED_INDEXES = [
   "document_invitations_doc_status_expiry_idx",
   "workspace_invitations_ws_status_created_idx",
   "workspaces_auto_join_domain_uidx",
+  "workspace_members_single_owner_uidx",
 ] as const;
 
 async function main() {
@@ -32,6 +33,9 @@ async function main() {
       to_regclass('public.document_versions')::text AS document_versions,
       to_regclass('public.document_search_blocks')::text AS document_search_blocks,
       to_regclass('drizzle.__drizzle_migrations')::text AS migration_journal,
+      to_regprocedure(
+        'public.transfer_workspace_ownership(text,text,text)'
+      )::text AS ownership_transfer_function,
       EXISTS (
         SELECT 1
         FROM information_schema.columns
@@ -68,6 +72,7 @@ async function main() {
     document_versions: string | null;
     document_search_blocks: string | null;
     migration_journal: string | null;
+    ownership_transfer_function: string | null;
     has_document_revision: boolean;
     has_auto_join_domain: boolean;
     has_vector: boolean;
@@ -93,6 +98,10 @@ async function main() {
     domainAccessSchemaReady:
       row.has_auto_join_domain &&
       indexes.includes("workspaces_auto_join_domain_uidx"),
+    ownershipSchemaReady: Boolean(
+      row.ownership_transfer_function &&
+        indexes.includes("workspace_members_single_owner_uidx"),
+    ),
     migrationJournalReady: Boolean(row.migration_journal),
     missingIndexes,
   };
@@ -100,6 +109,7 @@ async function main() {
     checks.coreSchemaReady &&
     checks.searchSchemaReady &&
     checks.domainAccessSchemaReady &&
+    checks.ownershipSchemaReady &&
     checks.migrationJournalReady &&
     missingIndexes.length === 0;
 

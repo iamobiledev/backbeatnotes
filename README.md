@@ -237,8 +237,9 @@ Use `DATABASE_URL_UNPOOLED` for DDL. Apply the same migration files to:
 
 Apply migrations before deploying code that reads new schema, then run
 `db:check` against that same database. Domain access requires the
-`workspaces.auto_join_domain` column and its unique claim index. A deployment
-is not ready until these checks pass.
+`workspaces.auto_join_domain` column and its unique claim index. Ownership
+transfer requires the transfer function and one-owner-per-workspace index. A
+deployment is not ready until these checks pass.
 
 SQL lives in `drizzle/`. Generate new migrations with `pnpm db:generate` after schema changes.
 
@@ -345,10 +346,11 @@ curl --fail https://your-deployment.vercel.app/api/health
 ```
 
 `db:check` exits non-zero when required migrations, pgvector, the monotonic
-document revision column, domain-access schema, or workload indexes are
-missing. Revision tokens prevent concurrent whole-document saves from silently
-overwriting one another. `/api/health` returns 503 with secret-free schema
-readiness details when the database is unavailable or incomplete.
+document revision column, domain-access schema, ownership invariant, or
+workload indexes are missing. Revision tokens prevent concurrent whole-document
+saves from silently overwriting one another. `/api/health` returns 503 with
+secret-free schema readiness details when the database is unavailable or
+incomplete.
 During rollback, keep the newer schema in place; migrations are additive and
 older application versions safely ignore these tables/indexes.
 

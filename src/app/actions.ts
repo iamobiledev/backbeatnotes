@@ -39,6 +39,7 @@ import {
   inviteToWorkspace,
   acceptInvitation,
   updateMemberRole,
+  transferWorkspaceOwnership,
   removeMember,
   renameWorkspace,
   setWorkspaceAutoJoinDomain,
@@ -70,6 +71,13 @@ const FRIENDLY_ERRORS: Record<string, string> = {
   PERSONAL_WORKSPACE: "Personal notebooks can't be shared.",
   CANNOT_CHANGE_OWNER: "The workspace owner's role can't be changed.",
   CANNOT_REMOVE_OWNER: "The workspace owner can't be removed.",
+  OWNER_ONLY: "Only the workspace owner can transfer ownership.",
+  CANNOT_TRANSFER_TO_SELF: "Choose another member to become the owner.",
+  TRANSFER_TARGET_NOT_MEMBER:
+    "That person is no longer a member of this workspace.",
+  ALREADY_OWNER: "That person is already the workspace owner.",
+  OWNERSHIP_TRANSFER_FAILED:
+    "Ownership could not be transferred. Please try again.",
   INVITATION_INACTIVE: "This invitation is no longer active.",
   INVITATION_EXPIRED: "This invitation has expired.",
   EMAIL_MISMATCH: "This invitation was sent to a different email address.",
@@ -196,6 +204,27 @@ export async function actionUpdateMemberRole(input: {
       })
       .parse(input);
     await updateMemberRole({ userId: session.user.id, ...parsed });
+    revalidatePath(`/app/${parsed.workspaceId}/settings`);
+    return undefined;
+  });
+}
+
+export async function actionTransferWorkspaceOwnership(input: {
+  workspaceId: string;
+  targetUserId: string;
+}): Promise<ActionResult<undefined>> {
+  const session = await requireVerifiedSession();
+  return run(async () => {
+    const parsed = z
+      .object({
+        workspaceId: z.string().min(1),
+        targetUserId: z.string().min(1),
+      })
+      .parse(input);
+    await transferWorkspaceOwnership({
+      userId: session.user.id,
+      ...parsed,
+    });
     revalidatePath(`/app/${parsed.workspaceId}/settings`);
     return undefined;
   });

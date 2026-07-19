@@ -117,6 +117,7 @@ export default async function WorkspaceSettingsPage({
             workspaceId={workspaceId}
             currentUserId={session.user.id}
             isAdmin={isAdmin}
+            isOwner={workspace.role === "owner"}
             members={members.map((m) => ({
               userId: m.userId,
               name: m.name,

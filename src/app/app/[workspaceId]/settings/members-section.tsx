@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { UserPlus, X } from "lucide-react";
+import { Crown, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,11 +11,21 @@ import { Avatar } from "@/components/ui/avatar";
 import {
   actionInviteMember,
   actionUpdateMemberRole,
+  actionTransferWorkspaceOwnership,
   actionRemoveMember,
   actionRevokeInvitation,
   actionResendInvitation,
 } from "@/app/actions";
 import { formatDistanceToNow } from "date-fns";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type Member = {
   userId: string;
@@ -125,16 +135,19 @@ export function MembersSection({
   workspaceId,
   currentUserId,
   isAdmin,
+  isOwner,
   members,
   invitations,
 }: {
   workspaceId: string;
   currentUserId: string;
   isAdmin: boolean;
+  isOwner: boolean;
   members: Member[];
   invitations: Invitation[];
 }) {
   const [pending, startTransition] = useTransition();
+  const [transferTarget, setTransferTarget] = useState<Member | null>(null);
 
   const changeRole = (targetUserId: string, nextRole: string) => {
     startTransition(async () => {
@@ -156,6 +169,23 @@ export function MembersSection({
       const result = await actionRemoveMember({ workspaceId, targetUserId });
       if (result.ok) {
         toast.success(`${name} removed from the workspace`);
+      } else {
+        toast.error(result.error);
+      }
+    });
+  };
+
+  const transferOwnership = () => {
+    if (!transferTarget) return;
+    const target = transferTarget;
+    startTransition(async () => {
+      const result = await actionTransferWorkspaceOwnership({
+        workspaceId,
+        targetUserId: target.userId,
+      });
+      if (result.ok) {
+        toast.success(`${target.name} is now the workspace owner`);
+        setTransferTarget(null);
       } else {
         toast.error(result.error);
       }
@@ -236,6 +266,18 @@ export function MembersSection({
                   <option value="member">Editor</option>
                   <option value="guest">Viewer</option>
                 </Select>
+                {isOwner && member.userId !== currentUserId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 text-xs"
+                    onClick={() => setTransferTarget(member)}
+                    disabled={pending}
+                  >
+                    <Crown className="h-3.5 w-3.5" />
+                    Make owner
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -317,6 +359,38 @@ export function MembersSection({
       )}
 
       {isAdmin && <InviteMemberForm workspaceId={workspaceId} />}
+
+      <Dialog
+        open={Boolean(transferTarget)}
+        onOpenChange={(open) => {
+          if (!open && !pending) setTransferTarget(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transfer workspace ownership?</DialogTitle>
+            <DialogDescription>
+              {transferTarget?.name} will become the workspace owner. You will
+              become an Admin, and only the new owner can transfer ownership
+              back.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline" disabled={pending}>
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              type="button"
+              onClick={transferOwnership}
+              disabled={pending}
+            >
+              {pending ? "Transferring…" : "Transfer ownership"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
