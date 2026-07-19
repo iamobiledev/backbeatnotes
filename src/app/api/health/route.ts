@@ -16,6 +16,7 @@ export async function GET() {
     connected: boolean;
     coreSchemaReady: boolean;
     searchSchemaReady: boolean;
+    domainAccessSchemaReady: boolean;
     error?: "unavailable";
   };
   try {
@@ -33,7 +34,16 @@ export async function GET() {
         to_regclass('public.document_search_blocks') IS NOT NULL AS search_blocks,
         EXISTS (
           SELECT 1 FROM pg_extension WHERE extname = 'vector'
-        ) AS search_vector
+        ) AS search_vector,
+        EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'workspaces'
+            AND column_name = 'auto_join_domain'
+        ) AS domain_access_column,
+        to_regclass('public.workspaces_auto_join_domain_uidx') IS NOT NULL
+          AS domain_access_index
     `);
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const result = await Promise.race([
@@ -53,6 +63,8 @@ export async function GET() {
       core_revision?: boolean;
       search_blocks?: boolean;
       search_vector?: boolean;
+      domain_access_column?: boolean;
+      domain_access_index?: boolean;
     };
     database = {
       connected: true,
@@ -60,12 +72,16 @@ export async function GET() {
         row.core_documents && row.core_memberships && row.core_revision,
       ),
       searchSchemaReady: Boolean(row.search_blocks && row.search_vector),
+      domainAccessSchemaReady: Boolean(
+        row.domain_access_column && row.domain_access_index,
+      ),
     };
   } catch {
     database = {
       connected: false,
       coreSchemaReady: false,
       searchSchemaReady: false,
+      domainAccessSchemaReady: false,
       error: "unavailable",
     };
   }
@@ -79,7 +95,8 @@ export async function GET() {
     requiredEnvReady &&
     database.connected &&
     database.coreSchemaReady &&
-    database.searchSchemaReady;
+    database.searchSchemaReady &&
+    database.domainAccessSchemaReady;
   let appUrlHost = "unknown";
   try {
     appUrlHost = new URL(getAppUrl()).host;

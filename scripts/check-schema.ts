@@ -12,6 +12,7 @@ const REQUIRED_INDEXES = [
   "document_activity_coalesce_idx",
   "document_invitations_doc_status_expiry_idx",
   "workspace_invitations_ws_status_created_idx",
+  "workspaces_auto_join_domain_uidx",
 ] as const;
 
 async function main() {
@@ -39,6 +40,13 @@ async function main() {
           AND column_name = 'revision'
       ) AS has_document_revision,
       EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'workspaces'
+          AND column_name = 'auto_join_domain'
+      ) AS has_auto_join_domain,
+      EXISTS (
         SELECT 1 FROM pg_extension WHERE extname = 'vector'
       ) AS has_vector,
       COALESCE(
@@ -61,6 +69,7 @@ async function main() {
     document_search_blocks: string | null;
     migration_journal: string | null;
     has_document_revision: boolean;
+    has_auto_join_domain: boolean;
     has_vector: boolean;
     indexes: string[] | string;
   };
@@ -81,12 +90,16 @@ async function main() {
     searchSchemaReady: Boolean(
       row.document_search_blocks && row.has_vector,
     ),
+    domainAccessSchemaReady:
+      row.has_auto_join_domain &&
+      indexes.includes("workspaces_auto_join_domain_uidx"),
     migrationJournalReady: Boolean(row.migration_journal),
     missingIndexes,
   };
   const ready =
     checks.coreSchemaReady &&
     checks.searchSchemaReady &&
+    checks.domainAccessSchemaReady &&
     checks.migrationJournalReady &&
     missingIndexes.length === 0;
 

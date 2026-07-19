@@ -226,6 +226,7 @@ Migrations are **not** run automatically on every Vercel deployment.
 ```bash
 # Local / CI with credentials
 pnpm db:migrate
+pnpm db:check
 ```
 
 Use `DATABASE_URL_UNPOOLED` for DDL. Apply the same migration files to:
@@ -233,6 +234,11 @@ Use `DATABASE_URL_UNPOOLED` for DDL. Apply the same migration files to:
 1. Development branch
 2. Preview branch (or let Neon branching inherit schema, then migrate if needed)
 3. Production branch — run once per release from a trusted machine or a one-off CI job
+
+Apply migrations before deploying code that reads new schema, then run
+`db:check` against that same database. Domain access requires the
+`workspaces.auto_join_domain` column and its unique claim index. A deployment
+is not ready until these checks pass.
 
 SQL lives in `drizzle/`. Generate new migrations with `pnpm db:generate` after schema changes.
 
@@ -338,11 +344,11 @@ pnpm search:backfill
 curl --fail https://your-deployment.vercel.app/api/health
 ```
 
-`db:check` exits non-zero when migrations 0006–0008, pgvector, the monotonic
-document revision column, or required indexes are missing. Revision tokens
-prevent concurrent whole-document saves from silently overwriting one another.
-`/api/health` returns 503 with secret-free schema readiness details when the
-database is unavailable or incomplete.
+`db:check` exits non-zero when required migrations, pgvector, the monotonic
+document revision column, domain-access schema, or workload indexes are
+missing. Revision tokens prevent concurrent whole-document saves from silently
+overwriting one another. `/api/health` returns 503 with secret-free schema
+readiness details when the database is unavailable or incomplete.
 During rollback, keep the newer schema in place; migrations are additive and
 older application versions safely ignore these tables/indexes.
 
