@@ -25,7 +25,27 @@ import {
 import { slugify } from "@/lib/utils";
 import { brand } from "@/config/brand";
 import { logger } from "@/lib/logger";
-import { postgresErrorCode } from "@/lib/db/errors";
+import {
+  isMissingPostgresColumn,
+  postgresErrorCode,
+} from "@/lib/db/errors";
+
+/**
+ * Keep core workspace reads compatible with additive schema rollouts.
+ * Optional/new columns must be queried by their owning feature so a pending
+ * migration cannot break sign-in, personal-workspace bootstrap, or Slack.
+ */
+const stableWorkspaceSelection = {
+  id: workspaces.id,
+  name: workspaces.name,
+  slug: workspaces.slug,
+  iconUrl: workspaces.iconUrl,
+  iconBlobPathname: workspaces.iconBlobPathname,
+  isPersonal: workspaces.isPersonal,
+  createdById: workspaces.createdById,
+  createdAt: workspaces.createdAt,
+  updatedAt: workspaces.updatedAt,
+};
 
 export async function createWorkspace(opts: {
   userId: string;
@@ -57,7 +77,7 @@ export async function createWorkspace(opts: {
       isPersonal: opts.isPersonal ?? false,
       createdById: opts.userId,
     })
-    .returning();
+    .returning(stableWorkspaceSelection);
 
   await db.insert(workspaceMembers).values({
     id: nanoid(),
@@ -78,7 +98,7 @@ export const PERSONAL_WORKSPACE_NAME = "Personal notebook";
 export async function getOrCreatePersonalWorkspace(userId: string) {
   const db = getDb();
   const [existing] = await db
-    .select()
+    .select(stableWorkspaceSelection)
     .from(workspaces)
     .where(
       and(eq(workspaces.createdById, userId), eq(workspaces.isPersonal, true)),
@@ -95,7 +115,7 @@ export async function getOrCreatePersonalWorkspace(userId: string) {
   } catch (error) {
     // Unique index race: another request created it concurrently.
     const [retry] = await db
-      .select()
+      .select(stableWorkspaceSelection)
       .from(workspaces)
       .where(
         and(
@@ -114,12 +134,45 @@ export const getWorkspaceById = cache(async function getWorkspaceById(
 ) {
   const db = getDb();
   const [workspace] = await db
-    .select()
+    .select(stableWorkspaceSelection)
     .from(workspaces)
     .where(eq(workspaces.id, workspaceId))
     .limit(1);
   return workspace ?? null;
 });
+
+export type WorkspaceAutoJoinDomainState =
+  | { available: true; domain: string | null }
+  | { available: false; domain: null };
+
+/**
+ * Domain access is optional during a rolling schema deployment. Only an exact
+ * missing-column error is degraded; connectivity and unrelated schema errors
+ * still fail loudly.
+ */
+export const getWorkspaceAutoJoinDomain = cache(
+  async function getWorkspaceAutoJoinDomain(
+    workspaceId: string,
+  ): Promise<WorkspaceAutoJoinDomainState> {
+    const db = getDb();
+    try {
+      const [workspace] = await db
+        .select({ domain: workspaces.autoJoinDomain })
+        .from(workspaces)
+        .where(eq(workspaces.id, workspaceId))
+        .limit(1);
+      return { available: true, domain: workspace?.domain ?? null };
+    } catch (error) {
+      if (isMissingPostgresColumn(error, "auto_join_domain")) {
+        logger.warn("workspace.auto_join_schema_unavailable", {
+          workspaceId,
+        });
+        return { available: false, domain: null };
+      }
+      throw error;
+    }
+  },
+);
 
 export async function listWorkspaceMembers(opts: {
   userId: string;
@@ -272,7 +325,7 @@ export async function setWorkspaceAutoJoinDomain(opts: {
       .update(workspaces)
       .set({ autoJoinDomain: domain, updatedAt: new Date() })
       .where(eq(workspaces.id, opts.workspaceId))
-      .returning();
+      .returning({ autoJoinDomain: workspaces.autoJoinDomain });
   } catch (error) {
     // Concurrent claimants can pass the pre-check; the unique index still
     // rejects the loser — surface the same friendly error as the pre-check.
@@ -311,7 +364,7 @@ export async function renameWorkspace(opts: {
     .update(workspaces)
     .set({ name: opts.name.trim(), updatedAt: new Date() })
     .where(eq(workspaces.id, opts.workspaceId))
-    .returning();
+    .returning(stableWorkspaceSelection);
   return updated;
 }
 

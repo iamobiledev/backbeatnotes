@@ -15,10 +15,12 @@ import { actionSetWorkspaceAutoJoinDomain } from "@/app/actions";
 export function DomainAccessSection({
   workspaceId,
   autoJoinDomain,
+  schemaAvailable,
   canEdit,
 }: {
   workspaceId: string;
   autoJoinDomain: string | null;
+  schemaAvailable: boolean;
   canEdit: boolean;
 }) {
   const [value, setValue] = useState(autoJoinDomain ?? "");
@@ -26,6 +28,27 @@ export function DomainAccessSection({
   const [pending, startTransition] = useTransition();
 
   if (!canEdit) return null;
+
+  if (!schemaAvailable) {
+    return (
+      <section aria-labelledby="domain-access-heading">
+        <h2
+          id="domain-access-heading"
+          className="flex items-center gap-2 text-lg font-medium"
+        >
+          <Globe className="h-4 w-4 text-[var(--primary)]" />
+          Domain access
+        </h2>
+        <p
+          className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          role="status"
+        >
+          Domain access is temporarily unavailable while a database update is
+          applied. Invitations and member management are still available.
+        </p>
+      </section>
+    );
+  }
 
   const submit = (domain: string | null) => {
     startTransition(async () => {

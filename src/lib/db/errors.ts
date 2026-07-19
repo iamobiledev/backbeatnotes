@@ -22,6 +22,7 @@ export function postgresErrorCode(error: unknown): string | null {
 
 type PostgresErrorLayer = {
   code?: unknown;
+  column?: unknown;
   table?: unknown;
   message?: unknown;
   cause?: unknown;
@@ -65,6 +66,31 @@ export function isMissingPostgresRelation(
     return (
       typeof layer.message === "string" &&
       exactMissingRelation.test(layer.message)
+    );
+  });
+}
+
+/**
+ * True only when PostgreSQL says a known optional column is unavailable.
+ * Match the code and column on the same driver-error layer so an outer
+ * Drizzle query string cannot make an unrelated schema failure look safe.
+ */
+export function isMissingPostgresColumn(
+  error: unknown,
+  column: string,
+): boolean {
+  const escaped = column.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const exactMissingColumn = new RegExp(
+    `\\bcolumn\\s+"(?:[^"]+\\.)?${escaped}"\\s+does not exist\\b`,
+    "i",
+  );
+
+  return errorLayers(error).some((layer) => {
+    if (layer.code !== "42703") return false;
+    if (layer.column === column) return true;
+    return (
+      typeof layer.message === "string" &&
+      exactMissingColumn.test(layer.message)
     );
   });
 }

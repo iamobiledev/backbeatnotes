@@ -5,7 +5,7 @@ import { listUserWorkspaces } from "@/lib/documents/service";
 import {
   listWorkspaceMembers,
   listPendingInvitations,
-  getWorkspaceById,
+  getWorkspaceAutoJoinDomain,
 } from "@/lib/workspaces/service";
 import { getSlackStatus } from "@/lib/slack/status";
 import {
@@ -35,7 +35,7 @@ export default async function WorkspaceSettingsPage({
   const isAdmin = workspace.role === "owner" || workspace.role === "admin";
   const emailDelivery = getEmailDeliveryStatus();
 
-  const [members, invitations, slack, workspaceRow] = await Promise.all([
+  const [members, invitations, slack, domainAccess] = await Promise.all([
     workspace.isPersonal
       ? Promise.resolve([])
       : listWorkspaceMembers({ userId: session.user.id, workspaceId }),
@@ -44,8 +44,8 @@ export default async function WorkspaceSettingsPage({
       : Promise.resolve([]),
     getSlackStatus(workspaceId),
     !workspace.isPersonal && isAdmin
-      ? getWorkspaceById(workspaceId)
-      : Promise.resolve(null),
+      ? getWorkspaceAutoJoinDomain(workspaceId)
+      : Promise.resolve({ available: true as const, domain: null }),
   ]);
 
   const emailNotificationsEnabled = session.user.emailNotifications ?? true;
@@ -109,7 +109,8 @@ export default async function WorkspaceSettingsPage({
           />
           <DomainAccessSection
             workspaceId={workspaceId}
-            autoJoinDomain={workspaceRow?.autoJoinDomain ?? null}
+            autoJoinDomain={domainAccess.domain}
+            schemaAvailable={domainAccess.available}
             canEdit={isAdmin}
           />
           <MembersSection
