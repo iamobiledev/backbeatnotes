@@ -176,13 +176,19 @@ Let your team sign in with their existing Google accounts — no separate passwo
 
 1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials) (a project in your org), configure the **OAuth consent screen**. If everyone is in one Google Workspace org, choose **Internal**.
 2. Create an **OAuth client ID** of type **Web application** and add the authorized redirect URIs:
-   - Production: `https://your-domain.com/api/auth/callback/google`
+   - Production: `https://backbeatnotes.com/api/auth/callback/google` (replace the host only when deploying your own fork)
    - Local: `http://localhost:3000/api/auth/callback/google`
 3. Set the environment variables and redeploy:
    - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — enables the **Continue with Google** button on `/sign-in` and `/sign-up` (hidden when unset).
    - `GOOGLE_HOSTED_DOMAIN` (optional, e.g. `rowsone.com`) — restricts Google sign-in to that Google Workspace org. It is sent as the account-picker hint **and enforced server-side** against the verified `hd` claim of Google's id token; other Google accounts are rejected (they can still use email/password or invitations).
 
 Google accounts arrive with a verified email, so they skip the verification-email step. A Google sign-in whose email matches an existing verified email/password user links into the same account. New Google users get the default `developer` platform type (the regular-user type).
+
+Merging the Google sign-in code does not configure OAuth. After redeploying,
+check `/api/health`: `env.hasGoogleOAuth` must be `true`. A value of `false`
+means the deployed environment does not have both the client ID and secret.
+This integration is Google OAuth for Google Workspace; it is not a generic
+SAML or OIDC provider.
 
 #### Domain access (automatic workspace membership)
 
@@ -215,28 +221,57 @@ In Vercel → **Settings → Environment Variables**, set values for **Productio
 - `DATABASE_URL` / `DATABASE_URL_UNPOOLED` (from Neon integration)
 - `BETTER_AUTH_SECRET`
 - `NEXT_PUBLIC_APP_URL` (production domain for Production; preview URL pattern for Preview)
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` and optional `GOOGLE_HOSTED_DOMAIN`
 - `RESEND_API_KEY`, `EMAIL_FROM`
 - `BLOB_READ_WRITE_TOKEN` (from Blob store)
 - `CRON_SECRET`
 
 ### 8. Run migrations (intentionally)
 
-Migrations are **not** run automatically on every Vercel deployment.
+Migrations are **not** run automatically on Vercel deployments. A successful
+Vercel build only proves the application compiled; it does not prove the
+database was migrated.
 
 ```bash
-# Local / CI with credentials
+# Local, or a trusted CI/release shell with explicitly supplied credentials
 pnpm db:migrate
 pnpm db:check
 ```
 
-Use `DATABASE_URL_UNPOOLED` for DDL. Apply the same migration files to:
+`db:migrate` applies DDL through `DATABASE_URL_UNPOOLED` when available, then
+verifies the complete schema through both configured endpoints. `db:check`
+does the same dual-target verification without changing data:
+
+- `runtime` is the pooled `DATABASE_URL` used by the deployed application.
+- `migration` is the direct `DATABASE_URL_UNPOOLED` used for DDL.
+
+If the URLs are distinct, **both** must pass. A
+`RUNTIME_SCHEMA_BEHIND_MIGRATION_TARGET` result means the migration command
+updated one branch/database while the application is connected to another.
+The reports contain target labels and readiness flags, never credentials.
+
+The Cursor cloud development environment and the repository's normal local
+`.env` files point to local Postgres. Running `pnpm db:migrate` there does
+**not** migrate production. For a production release, supply both Production
+URLs from a secure shell, secret store, or one-off CI job; never save
+production credentials in a committed file. Confirm in Neon that the pooled
+and direct endpoints identify the same project, branch, database, and role
+before running the command.
+
+Apply the same migration files to:
 
 1. Development branch
 2. Preview branch (or let Neon branching inherit schema, then migrate if needed)
 3. Production branch — run once per release from a trusted machine or a one-off CI job
 
-Apply migrations before deploying code that reads new schema, then run
-`db:check` against that same database. Domain access requires the
+Use this release order:
+
+1. `pnpm db:migrate`
+2. `pnpm db:check`
+3. Deploy the application
+4. `curl --fail https://backbeatnotes.com/api/health`
+
+Apply migrations before deploying code that reads new schema. Domain access requires the
 `workspaces.auto_join_domain` column and its unique claim index. Ownership
 transfer requires the transfer function and one-owner-per-workspace index. A
 deployment is not ready until these checks pass.
@@ -532,9 +567,24 @@ Long-running processes, sticky sessions, always-on WebSockets, local filesystem 
 
 1. Confirm `DATABASE_URL` is the **pooled** (`-pooler`) connection for the app.
 2. Confirm `DATABASE_URL_UNPOOLED` is the **direct** host for migrations.
-3. Check Neon console: branch awake, IP allow list (Neon serverless typically allows Vercel egress).
-4. Ensure preview env vars do not point at production.
-5. Align `vercel.json` `regions` with Neon primary region.
+3. Confirm both URLs map to the same Neon project, branch, database, and role. `db:migrate` and `db:check` fail when only one configured target has the required schema.
+4. Check Neon console: branch awake, IP allow list (Neon serverless typically allows Vercel egress).
+5. Ensure preview env vars do not point at production.
+6. Align `vercel.json` `regions` with Neon primary region.
+
+### Database migration reported success but the app reports an update pending
+
+1. Fetch `/api/health` and inspect `database.domainAccessSchemaReady` and `database.ownershipSchemaReady`.
+2. Run the current `pnpm db:check`. `RUNTIME_SCHEMA_BEHIND_MIGRATION_TARGET` confirms that the direct migration endpoint is current while the pooled application endpoint is stale or points elsewhere.
+3. Correct the Neon/Vercel Production mapping before rerunning migrations. Repeatedly migrating the wrong direct endpoint cannot repair the runtime database.
+4. Apply every committed migration through the latest journal entry; do not manually insert migration-journal rows.
+
+### Google sign-in button is missing
+
+1. Check `/api/health` → `env.hasGoogleOAuth`. It must be `true`.
+2. Set both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in the same Vercel environment and redeploy.
+3. Add the exact custom-domain callback URL to the Google OAuth Web client.
+4. Set `GOOGLE_HOSTED_DOMAIN` only when sign-in should be restricted to one Google Workspace organization; this variable does not enable OAuth by itself.
 
 ### Missing environment variables
 
