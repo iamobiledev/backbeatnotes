@@ -40,7 +40,11 @@ export async function actionDisconnectSlack(input: {
     await deleteConnection(parsed.workspaceId);
     revalidatePath(`/app/${parsed.workspaceId}/settings`);
     return { ok: true, data: undefined };
-  } catch {
+  } catch (error) {
+    logger.error("slack.disconnect_failed", {
+      workspaceId: input.workspaceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return { ok: false, error: "Couldn't disconnect Slack. Please try again." };
   }
 }
@@ -55,7 +59,11 @@ export async function actionUnlinkSlackIdentity(input: {
       revalidatePath(`/app/${input.workspaceId}/settings`);
     }
     return { ok: true, data: undefined };
-  } catch {
+  } catch (error) {
+    logger.error("slack.unlink_identity_failed", {
+      userId: session.user.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return {
       ok: false,
       error: "Couldn't unlink your Slack account. Please try again.",
@@ -93,7 +101,11 @@ export async function actionListSlackChannels(input: {
     }
     channels.sort((a, b) => a.name.localeCompare(b.name));
     return { ok: true, data: channels };
-  } catch {
+  } catch (error) {
+    logger.error("slack.list_channels_failed", {
+      workspaceId: input.workspaceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return { ok: false, error: "Couldn't load Slack channels." };
   }
 }

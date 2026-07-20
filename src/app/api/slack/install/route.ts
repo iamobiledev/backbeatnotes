@@ -5,6 +5,7 @@ import { getWorkspaceById } from "@/lib/workspaces/service";
 import { getServerEnv, getAppUrl } from "@/env/server";
 import { isSlackConfigured } from "@/lib/slack/status";
 import { createStateToken } from "@/lib/slack/state";
+import { logger } from "@/lib/logger";
 
 /** Bot scopes — exactly what the features need, nothing more. */
 export const SLACK_BOT_SCOPES = [
@@ -44,10 +45,21 @@ export async function GET(request: Request) {
 
   try {
     await requireMembership(session.user.id, workspaceId, "admin");
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === "FORBIDDEN") {
+      return NextResponse.json(
+        { error: "Only workspace admins can connect Slack" },
+        { status: 403 },
+      );
+    }
+    logger.error("slack.install.membership_check_failed", {
+      workspaceId,
+      error: message,
+    });
     return NextResponse.json(
-      { error: "Only workspace admins can connect Slack" },
-      { status: 403 },
+      { error: "Couldn't start the Slack install. Please try again." },
+      { status: 500 },
     );
   }
 

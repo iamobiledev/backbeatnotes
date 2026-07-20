@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { signOut } from "@/lib/auth-client";
 
@@ -31,11 +32,27 @@ export function SignOutButtons() {
         disabled={pending}
         onClick={() => {
           startTransition(async () => {
-            // Sign out current device, then revoke remaining sessions via API
-            await fetch("/api/auth/revoke-sessions", {
-              method: "POST",
-              credentials: "include",
-            }).catch(() => undefined);
+            // Revoke remaining sessions first. If this fails, other devices
+            // would stay signed in, so surface the error and abort instead of
+            // silently signing out only this device.
+            let revoked: Response;
+            try {
+              revoked = await fetch("/api/auth/revoke-sessions", {
+                method: "POST",
+                credentials: "include",
+              });
+            } catch {
+              toast.error(
+                "Couldn't reach the server to sign out your other devices. Please try again.",
+              );
+              return;
+            }
+            if (!revoked.ok) {
+              toast.error(
+                "Couldn't sign out your other devices. Please try again.",
+              );
+              return;
+            }
             await signOut({
               fetchOptions: {
                 onSuccess: () => {
