@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { BookOpen, Clock, FileText, Lock, Star } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { requireVerifiedSession } from "@/lib/session";
@@ -10,17 +10,27 @@ import {
   listUserWorkspaces,
 } from "@/lib/documents/service";
 import { CreateDocumentButton } from "@/components/documents/create-document-button";
+import {
+  findWorkspaceByRouteKey,
+  workspaceDocumentPath,
+  workspacePath,
+} from "@/lib/workspaces/paths";
 
 export default async function WorkspacePage({
   params,
 }: {
   params: Promise<{ workspaceId: string }>;
 }) {
-  const { workspaceId } = await params;
+  const { workspaceId: workspaceRouteKey } = await params;
   const session = await requireVerifiedSession();
   const workspaces = await listUserWorkspaces(session.user.id);
-  const workspace = workspaces.find((w) => w.id === workspaceId);
+  const workspace = findWorkspaceByRouteKey(workspaces, workspaceRouteKey);
   if (!workspace) notFound();
+  if (workspaceRouteKey !== workspace.slug) {
+    permanentRedirect(workspacePath(workspace));
+  }
+
+  const workspaceId = workspace.id;
 
   const [docs, recent, favorites] = await Promise.all([
     listWorkspaceDocuments(session.user.id, workspaceId),
@@ -47,6 +57,7 @@ export default async function WorkspacePage({
           <div className="flex gap-2">
             <CreateDocumentButton
               workspaceId={workspaceId}
+              workspaceSlug={workspace.slug}
               docType="wiki"
               label="New wiki"
               variant="outline"
@@ -54,6 +65,7 @@ export default async function WorkspacePage({
             />
             <CreateDocumentButton
               workspaceId={workspaceId}
+              workspaceSlug={workspace.slug}
               label="New page"
               className="gap-1.5"
             />
@@ -77,6 +89,7 @@ export default async function WorkspacePage({
           {canEdit && (
             <CreateDocumentButton
               workspaceId={workspaceId}
+              workspaceSlug={workspace.slug}
               label="Create your first page"
               className="mt-6 gap-1.5"
             />
@@ -97,7 +110,7 @@ export default async function WorkspacePage({
                 {favorites.map((doc) => (
                   <li key={doc.id}>
                     <Link
-                      href={`/app/${workspaceId}/docs/${doc.id}`}
+                      href={workspaceDocumentPath(workspace, doc.id)}
                       className="block rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 transition-colors hover:border-[var(--primary)]"
                     >
                       <span className="block truncate font-medium">
@@ -129,7 +142,7 @@ export default async function WorkspacePage({
               {recent.slice(0, 6).map((doc) => (
                 <li key={doc.id}>
                   <Link
-                    href={`/app/${workspaceId}/docs/${doc.id}`}
+                    href={workspaceDocumentPath(workspace, doc.id)}
                     className="block rounded-md border border-transparent px-3 py-2 transition-colors hover:border-[var(--border)] hover:bg-[var(--card)]"
                   >
                     <span className="block truncate font-medium">
@@ -157,7 +170,7 @@ export default async function WorkspacePage({
               {docs.map((doc) => (
                 <li key={doc.id}>
                   <Link
-                    href={`/app/${workspaceId}/docs/${doc.id}`}
+                    href={workspaceDocumentPath(workspace, doc.id)}
                     className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-[var(--muted)]"
                   >
                     <span className="flex min-w-0 items-center gap-1.5 truncate">

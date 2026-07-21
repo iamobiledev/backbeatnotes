@@ -97,6 +97,7 @@ function renderTree(props: Partial<React.ComponentProps<typeof DocumentTree>> = 
     <DocumentTree
       nodes={nodes}
       workspaceId="ws_1"
+      workspaceSlug="rowsone"
       activePath=""
       favoriteIds={new Set()}
       canEdit

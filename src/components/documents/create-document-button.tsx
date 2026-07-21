@@ -9,12 +9,14 @@ import { Button } from "@/components/ui/button";
 
 export function CreateDocumentButton({
   workspaceId,
+  workspaceSlug,
   docType = "doc",
   label,
   variant = "default",
   className,
 }: {
   workspaceId: string;
+  workspaceSlug: string;
   docType?: "doc" | "wiki";
   label: string;
   variant?: "default" | "outline";
@@ -42,7 +44,7 @@ export function CreateDocumentButton({
             return;
           }
           router.push(
-            `/app/${result.data.workspaceId}/docs/${result.data.id}`,
+            `/app/${workspaceSlug}/docs/${result.data.id}`,
           );
           router.refresh();
         });

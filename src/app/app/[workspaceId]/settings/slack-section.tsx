@@ -12,6 +12,7 @@ import {
 
 export type SlackSectionProps = {
   workspaceId: string;
+  workspaceSlug: string;
   isPersonal: boolean;
   isAdmin: boolean;
   slack: {
@@ -24,6 +25,7 @@ export type SlackSectionProps = {
 
 export function SlackSection({
   workspaceId,
+  workspaceSlug,
   isPersonal,
   isAdmin,
   slack,
@@ -50,8 +52,8 @@ export function SlackSection({
     else if (linkStatus === "error")
       toast.error("Linking your Slack account failed. Please try again.");
 
-    router.replace(`/app/${workspaceId}/settings#slack`, { scroll: false });
-  }, [searchParams, router, workspaceId]);
+    router.replace(`/app/${workspaceSlug}/settings#slack`, { scroll: false });
+  }, [searchParams, router, workspaceSlug]);
 
   if (isPersonal) return null;
 

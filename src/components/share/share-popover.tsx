@@ -29,6 +29,7 @@ export type SharePopoverProps = {
   };
   workspace: {
     id: string;
+    slug: string;
     name: string;
     isPersonal: boolean;
     role: "owner" | "admin" | "member" | "guest";
@@ -79,7 +80,7 @@ export function SharePopover({
   }, [open, doc.id]);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const internalUrl = `${origin}/app/${doc.workspaceId}/docs/${doc.id}`;
+  const internalUrl = `${origin}/app/${workspace.slug}/docs/${doc.id}`;
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(internalUrl);

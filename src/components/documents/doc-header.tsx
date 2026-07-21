@@ -51,6 +51,7 @@ export type DocHeaderProps = {
   canManageLock: boolean;
   workspace: {
     id: string;
+    slug: string;
     name: string;
     isPersonal: boolean;
     role: "owner" | "admin" | "member" | "guest";
@@ -100,7 +101,7 @@ export function DocHeader({
     });
   };
 
-  const docUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/app/${doc.workspaceId}/docs/${doc.id}`;
+  const docUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/app/${workspace.slug}/docs/${doc.id}`;
 
   const toggleFavorite = () => {
     const next = !isFavorited;
@@ -123,10 +124,10 @@ export function DocHeader({
         toast.success("Moved to trash", {
           action: {
             label: "View trash",
-            onClick: () => router.push(`/app/${doc.workspaceId}/trash`),
+            onClick: () => router.push(`/app/${workspace.slug}/trash`),
           },
         });
-        router.push(`/app/${doc.workspaceId}`);
+        router.push(`/app/${workspace.slug}`);
       } else {
         toast.error(result.error);
       }
@@ -145,7 +146,7 @@ export function DocHeader({
           <li className="shrink-0">
             {isWorkspaceMember ? (
               <Link
-                href={`/app/${workspace.id}`}
+                href={`/app/${workspace.slug}`}
                 className="hover:text-[var(--foreground)]"
               >
                 {workspace.name}
@@ -159,7 +160,7 @@ export function DocHeader({
               <ChevronRight className="h-3.5 w-3.5 shrink-0" />
               {isWorkspaceMember ? (
                 <Link
-                  href={`/app/${workspace.id}/docs/${ancestor.id}`}
+                  href={`/app/${workspace.slug}/docs/${ancestor.id}`}
                   className="truncate hover:text-[var(--foreground)]"
                 >
                   {ancestor.title || "Untitled"}

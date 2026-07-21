@@ -9,10 +9,10 @@ import { actionRestoreDocument } from "@/app/actions";
 
 export function RestoreBanner({
   documentId,
-  workspaceId,
+  workspaceSlug,
 }: {
   documentId: string;
-  workspaceId: string;
+  workspaceSlug: string;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -30,7 +30,7 @@ export function RestoreBanner({
   return (
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
       <Link
-        href={`/app/${workspaceId}/trash`}
+        href={`/app/${workspaceSlug}/trash`}
         className="flex items-center gap-1.5 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
       >
         <ArrowLeft className="h-4 w-4" />

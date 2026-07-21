@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { AlertTriangle, BookLock } from "lucide-react";
 import { requireVerifiedSession } from "@/lib/session";
 import { listUserWorkspaces } from "@/lib/documents/service";
@@ -18,6 +18,10 @@ import { WorkspaceNameSection } from "./workspace-name-section";
 import { DomainAccessSection } from "./domain-access-section";
 import { NotificationsSection } from "./notifications-section";
 import { SlackSection } from "./slack-section";
+import {
+  findWorkspaceByRouteKey,
+  workspacePath,
+} from "@/lib/workspaces/paths";
 
 export const metadata = { title: "Settings" };
 
@@ -26,11 +30,16 @@ export default async function WorkspaceSettingsPage({
 }: {
   params: Promise<{ workspaceId: string }>;
 }) {
-  const { workspaceId } = await params;
+  const { workspaceId: workspaceRouteKey } = await params;
   const session = await requireVerifiedSession();
   const workspaces = await listUserWorkspaces(session.user.id);
-  const workspace = workspaces.find((w) => w.id === workspaceId);
+  const workspace = findWorkspaceByRouteKey(workspaces, workspaceRouteKey);
   if (!workspace) notFound();
+  if (workspaceRouteKey !== workspace.slug) {
+    permanentRedirect(`${workspacePath(workspace)}/settings`);
+  }
+
+  const workspaceId = workspace.id;
 
   const isAdmin = workspace.role === "owner" || workspace.role === "admin";
   const emailDelivery = getEmailDeliveryStatus();
@@ -140,6 +149,7 @@ export default async function WorkspaceSettingsPage({
 
       <SlackSection
         workspaceId={workspaceId}
+        workspaceSlug={workspace.slug}
         isPersonal={workspace.isPersonal}
         isAdmin={isAdmin}
         slack={slack}

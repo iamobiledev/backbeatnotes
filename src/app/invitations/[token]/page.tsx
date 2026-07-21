@@ -15,6 +15,11 @@ import {
   type InvitationDetails,
 } from "@/lib/invitations";
 import { InvitationAuthForm } from "./invitation-auth-form";
+import { getWorkspaceById } from "@/lib/workspaces/service";
+import {
+  workspaceDocumentPath,
+  workspacePath,
+} from "@/lib/workspaces/paths";
 
 const LEVEL_LABEL: Record<string, string> = {
   full_access: "Full access",
@@ -134,12 +139,18 @@ function AcceptanceForm({
     "use server";
     if (invitation.kind === "workspace") {
       const workspaceId = await actionAcceptInvitation(invitation.token);
-      redirect(`/app/${workspaceId}`);
+      const workspace = await getWorkspaceById(workspaceId);
+      redirect(workspace ? workspacePath(workspace) : "/app");
     }
 
     const { documentId, workspaceId } =
       await actionAcceptDocumentInvitation(invitation.token);
-    redirect(`/app/${workspaceId}/docs/${documentId}`);
+    const workspace = await getWorkspaceById(workspaceId);
+    redirect(
+      workspace
+        ? workspaceDocumentPath(workspace, documentId)
+        : `/app/${workspaceId}/docs/${documentId}`,
+    );
   }
 
   return (

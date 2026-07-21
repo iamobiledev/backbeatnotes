@@ -21,6 +21,7 @@ export type DocumentTreeNode = {
 
 export type WorkspaceSummary = {
   id: string;
+  slug: string;
   name: string;
   isPersonal: boolean;
   role: "owner" | "admin" | "member" | "guest";

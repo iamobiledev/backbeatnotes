@@ -55,6 +55,7 @@ export function ShareTab({
   doc: { id: string; workspaceId: string; title: string };
   workspace: {
     id: string;
+    slug: string;
     name: string;
     isPersonal: boolean;
     role: "owner" | "admin" | "member" | "guest";
@@ -254,7 +255,11 @@ export function ShareTab({
       <div className="mt-3">
         <ShareToSlackSection
           doc={{ id: doc.id, workspaceId: doc.workspaceId }}
-          workspace={{ id: workspace.id, isPersonal: workspace.isPersonal }}
+          workspace={{
+            id: workspace.id,
+            slug: workspace.slug,
+            isPersonal: workspace.isPersonal,
+          }}
           slack={slack}
           isAdmin={isAdmin}
         />

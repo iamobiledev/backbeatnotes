@@ -67,6 +67,7 @@ const MoveToDialog = dynamic(() =>
 export function DocumentTree({
   nodes,
   workspaceId,
+  workspaceSlug,
   activePath,
   favoriteIds,
   canEdit = true,
@@ -76,6 +77,7 @@ export function DocumentTree({
 }: {
   nodes: DocumentTreeNode[];
   workspaceId: string;
+  workspaceSlug: string;
   activePath: string;
   favoriteIds?: Set<string>;
   /** Whether the viewer may edit pages (rename, move, trash, drag). */
@@ -139,6 +141,7 @@ export function DocumentTree({
           node={node}
           depth={0}
           workspaceId={workspaceId}
+          workspaceSlug={workspaceSlug}
           activeDocId={activeDocId}
           expanded={expanded}
           favoriteIds={favoriteIds}
@@ -272,6 +275,7 @@ function TreeItem({
   node,
   depth,
   workspaceId,
+  workspaceSlug,
   activeDocId,
   expanded,
   favoriteIds,
@@ -285,6 +289,7 @@ function TreeItem({
   node: DocumentTreeNode;
   depth: number;
   workspaceId: string;
+  workspaceSlug: string;
   activeDocId: string | null;
   expanded: Set<string>;
   favoriteIds?: Set<string>;
@@ -306,7 +311,7 @@ function TreeItem({
   const displayTitle = titleOverride ?? node.title;
   const isFavorited =
     favoriteOverride ?? favoriteIds?.has(node.id) ?? false;
-  const docUrl = `/app/${workspaceId}/docs/${node.id}`;
+  const docUrl = `/app/${workspaceSlug}/docs/${node.id}`;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
@@ -365,7 +370,7 @@ function TreeItem({
       const result = await actionTrashDocument({ documentId: node.id });
       if (result.ok) {
         toast.success("Moved to trash");
-        if (isActive) router.push(`/app/${workspaceId}`);
+        if (isActive) router.push(`/app/${workspaceSlug}`);
       } else {
         toast.error(result.error);
       }
@@ -664,6 +669,7 @@ function TreeItem({
               node={child}
               depth={depth + 1}
               workspaceId={workspaceId}
+              workspaceSlug={workspaceSlug}
               activeDocId={activeDocId}
               expanded={expanded}
               favoriteIds={favoriteIds}

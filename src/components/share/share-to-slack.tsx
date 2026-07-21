@@ -24,7 +24,7 @@ export function ShareToSlackSection({
   isAdmin,
 }: {
   doc: { id: string; workspaceId: string };
-  workspace: { id: string; isPersonal: boolean };
+  workspace: { id: string; slug: string; isPersonal: boolean };
   slack: { configured: boolean; connected: boolean; teamName: string | null };
   isAdmin: boolean;
 }) {
@@ -95,7 +95,7 @@ export function ShareToSlackSection({
               Connect your Slack workspace to share pages directly into
               channels.{" "}
               <Link
-                href={`/app/${workspace.id}/settings#slack`}
+                href={`/app/${workspace.slug}/settings#slack`}
                 className="font-medium text-[var(--primary)] hover:underline"
               >
                 Connect Slack →

@@ -53,6 +53,10 @@ import {
   actionMoveDocument,
 } from "@/app/actions";
 import type { DocumentTreeNode, WorkspaceSummary } from "@/lib/documents/types";
+import {
+  workspaceDocumentPathForId,
+  workspacePath,
+} from "@/lib/workspaces/paths";
 import { DROP_TARGET_CLASS, useRootDropTarget } from "./tree-dnd";
 
 const CommandPalette = dynamic(() =>
@@ -143,12 +147,16 @@ export function AppShell({
           return;
         }
         router.push(
-          `/app/${result.data.workspaceId}/docs/${result.data.id}`,
+          workspaceDocumentPathForId(
+            workspaces,
+            result.data.workspaceId,
+            result.data.id,
+          ),
         );
         router.refresh();
       });
     },
-    [creating, router, workspace.id],
+    [creating, router, workspace.id, workspaces],
   );
 
   // Lightweight global shortcuts mount heavy dialogs only on first use.
@@ -190,7 +198,7 @@ export function AppShell({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [createPage, canEditDocs, drawerOpen]);
 
-  const isHome = pathname === `/app/${workspace.id}`;
+  const isHome = pathname === workspacePath(workspace);
 
   const personal = workspaces.find((w) => w.isPersonal);
   const personalTree = personal ? treeByWorkspace.get(personal.id) ?? [] : [];
@@ -200,7 +208,7 @@ export function AppShell({
     <div className="flex h-full flex-col text-sm">
       <div className="flex items-center gap-1 px-2">
         <Link
-          href={`/app/${workspace.id}`}
+          href={workspacePath(workspace)}
           aria-label={`${brand.name} workspace home`}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[var(--sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
         >
@@ -241,13 +249,13 @@ export function AppShell({
         <SidebarItem
           icon={<Home className="h-4 w-4" />}
           label="Home"
-          href={`/app/${workspace.id}`}
+          href={workspacePath(workspace)}
           active={isHome}
         />
         <SidebarItem
           icon={<Settings className="h-4 w-4" />}
           label="Settings"
-          href={`/app/${workspace.id}/settings`}
+          href={`${workspacePath(workspace)}/settings`}
           active={pathname?.endsWith("/settings")}
         />
       </div>
@@ -265,7 +273,11 @@ export function AppShell({
               {favorites.map((fav) => (
                 <li key={fav.id}>
                   <Link
-                    href={`/app/${fav.workspaceId}/docs/${fav.id}`}
+                    href={workspaceDocumentPathForId(
+                      workspaces,
+                      fav.workspaceId,
+                      fav.id,
+                    )}
                     className={`flex items-center gap-1.5 rounded-md px-2 py-1 font-medium transition-colors hover:bg-[var(--sidebar-hover)] ${
                       pathname?.endsWith(`/docs/${fav.id}`)
                         ? "bg-[var(--sidebar-active)] text-[var(--foreground)]"
@@ -290,7 +302,11 @@ export function AppShell({
               {shared.map((docItem) => (
                 <li key={docItem.id}>
                   <Link
-                    href={`/app/${docItem.workspaceId}/docs/${docItem.id}`}
+                    href={workspaceDocumentPathForId(
+                      workspaces,
+                      docItem.workspaceId,
+                      docItem.id,
+                    )}
                     className={`flex items-center gap-1.5 rounded-md px-2 py-1 font-medium transition-colors hover:bg-[var(--sidebar-hover)] ${
                       pathname?.endsWith(`/docs/${docItem.id}`)
                         ? "bg-[var(--sidebar-active)] text-[var(--foreground)]"
@@ -333,6 +349,7 @@ export function AppShell({
               <DocumentTree
                 nodes={personalTree}
                 workspaceId={personal.id}
+                workspaceSlug={personal.slug}
                 activePath={pathname ?? ""}
                 favoriteIds={favoriteIdSet}
                 canEdit={personal.role !== "guest"}
@@ -378,7 +395,7 @@ export function AppShell({
         <SidebarItem
           icon={<Trash2 className="h-4 w-4" />}
           label="Trash"
-          href={`/app/${workspace.id}/trash`}
+          href={`${workspacePath(workspace)}/trash`}
           active={pathname?.endsWith("/trash")}
         />
       </div>
@@ -426,7 +443,7 @@ export function AppShell({
             </Button>
 
             <Link
-              href={`/app/${workspace.id}`}
+              href={workspacePath(workspace)}
               className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-sm font-medium transition-colors hover:bg-[var(--sidebar-hover)]"
             >
               {workspace.isPersonal && (
@@ -497,6 +514,7 @@ export function AppShell({
       {searchOpen && (
         <CommandPalette
           workspaceId={workspace.id}
+          workspaces={workspaces}
           open
           onOpenChange={setSearchOpen}
         />
@@ -721,7 +739,7 @@ function TeamspaceItem({
       <div
         {...dropProps}
         className={`group/ts flex items-center rounded-md pr-1 transition-colors hover:bg-[var(--sidebar-hover)] ${
-          isCurrent && pathname === `/app/${workspace.id}`
+          isCurrent && pathname === workspacePath(workspace)
             ? "bg-[var(--sidebar-active)]"
             : ""
         } ${isDropTarget ? DROP_TARGET_CLASS : ""}`}
@@ -748,7 +766,7 @@ function TeamspaceItem({
           </span>
         </button>
         <Link
-          href={`/app/${workspace.id}`}
+          href={workspacePath(workspace)}
           className={`min-w-0 flex-1 truncate py-1 pl-1 text-sm font-medium ${
             isCurrent ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]"
           }`}
@@ -786,6 +804,7 @@ function TeamspaceItem({
             <DocumentTree
               nodes={nodes ?? []}
               workspaceId={workspace.id}
+              workspaceSlug={workspace.slug}
               activePath={pathname}
               favoriteIds={favoriteIds}
               canEdit={canEdit}
@@ -895,7 +914,7 @@ function WorkspaceSwitcher({
               <DropdownMenuLabel>Private</DropdownMenuLabel>
               {personal.map((ws) => (
                 <DropdownMenuItem key={ws.id} asChild>
-                  <Link href={`/app/${ws.id}`}>
+                  <Link href={workspacePath(ws)}>
                     <BookLock className="h-4 w-4" />
                     {ws.name}
                   </Link>
@@ -911,7 +930,7 @@ function WorkspaceSwitcher({
           )}
           {shared.map((ws) => (
             <DropdownMenuItem key={ws.id} asChild>
-              <Link href={`/app/${ws.id}`}>
+              <Link href={workspacePath(ws)}>
                 <span className="flex h-5 w-5 items-center justify-center rounded bg-[var(--foreground)] text-[10px] font-semibold text-[var(--background)]">
                   {ws.name[0]?.toUpperCase() ?? "W"}
                 </span>

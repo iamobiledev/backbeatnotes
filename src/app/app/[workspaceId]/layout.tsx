@@ -8,6 +8,7 @@ import {
 } from "@/lib/documents/service";
 import { AppShell } from "@/components/layout/app-shell";
 import { Skeleton } from "@/components/ui/skeleton";
+import { findWorkspaceByRouteKey } from "@/lib/workspaces/paths";
 
 export const unstable_instant = false;
 
@@ -32,7 +33,7 @@ async function WorkspaceChrome({
   children: React.ReactNode;
   params: Promise<{ workspaceId: string }>;
 }) {
-  const { workspaceId } = await params;
+  const { workspaceId: workspaceRouteKey } = await params;
   const session = await requireVerifiedSession();
   const workspaces = await listUserWorkspaces(session.user.id);
 
@@ -40,7 +41,7 @@ async function WorkspaceChrome({
   // with you) keeps the familiar shell with your own sidebar — your personal
   // notebook acts as the "current" workspace.
   const workspace =
-    workspaces.find((w) => w.id === workspaceId) ??
+    findWorkspaceByRouteKey(workspaces, workspaceRouteKey) ??
     workspaces.find((w) => w.isPersonal) ??
     workspaces[0];
 
@@ -76,12 +77,14 @@ async function WorkspaceChrome({
       platformRole={platformRoleOf(session.user)}
       workspace={{
         id: workspace.id,
+        slug: workspace.slug,
         name: workspace.name,
         isPersonal: workspace.isPersonal,
         role: workspace.role,
       }}
       workspaces={workspaces.map((w) => ({
         id: w.id,
+        slug: w.slug,
         name: w.name,
         isPersonal: w.isPersonal,
         role: w.role,

@@ -1,10 +1,14 @@
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { requireVerifiedSession } from "@/lib/session";
 import {
   listTrashedDocuments,
   listUserWorkspaces,
 } from "@/lib/documents/service";
 import { TrashList } from "./trash-list";
+import {
+  findWorkspaceByRouteKey,
+  workspacePath,
+} from "@/lib/workspaces/paths";
 
 export const metadata = { title: "Trash" };
 
@@ -13,13 +17,16 @@ export default async function TrashPage({
 }: {
   params: Promise<{ workspaceId: string }>;
 }) {
-  const { workspaceId } = await params;
+  const { workspaceId: workspaceRouteKey } = await params;
   const session = await requireVerifiedSession();
   const workspaces = await listUserWorkspaces(session.user.id);
-  const workspace = workspaces.find((w) => w.id === workspaceId);
+  const workspace = findWorkspaceByRouteKey(workspaces, workspaceRouteKey);
   if (!workspace) notFound();
+  if (workspaceRouteKey !== workspace.slug) {
+    permanentRedirect(`${workspacePath(workspace)}/trash`);
+  }
 
-  const trashed = await listTrashedDocuments(session.user.id, workspaceId);
+  const trashed = await listTrashedDocuments(session.user.id, workspace.id);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -32,7 +39,7 @@ export default async function TrashPage({
       </p>
 
       <TrashList
-        workspaceId={workspaceId}
+        workspaceSlug={workspace.slug}
         items={trashed.map((item) => ({
           id: item.id,
           title: item.title,

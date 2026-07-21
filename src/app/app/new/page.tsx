@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { brand } from "@/config/brand";
+import { workspacePath } from "@/lib/workspaces/paths";
 
 export default async function NewWorkspacePage() {
   const session = await requireVerifiedSession();
@@ -35,7 +36,7 @@ export default async function NewWorkspacePage() {
   async function create(formData: FormData) {
     "use server";
     const workspace = await actionCreateWorkspace(formData);
-    redirect(`/app/${workspace.id}`);
+    redirect(workspacePath(workspace));
   }
 
   return (

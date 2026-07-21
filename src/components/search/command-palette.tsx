@@ -9,6 +9,8 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
+import type { WorkspaceSummary } from "@/lib/documents/types";
+import { workspaceDocumentPathForId } from "@/lib/workspaces/paths";
 import { FileText, Loader2, Search } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -35,10 +37,12 @@ const DATE_FILTERS = [
  */
 export function CommandPalette({
   workspaceId,
+  workspaces = [],
   open: controlledOpen,
   onOpenChange,
 }: {
   workspaceId?: string;
+  workspaces?: WorkspaceSummary[];
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
@@ -169,9 +173,15 @@ export function CommandPalette({
   const openHit = useCallback(
     (hit: SearchHit) => {
       handleOpenChange(false);
-      router.push(`/app/${hit.workspaceId}/docs/${hit.documentId}`);
+      router.push(
+        workspaceDocumentPathForId(
+          workspaces,
+          hit.workspaceId,
+          hit.documentId,
+        ),
+      );
     },
-    [router, handleOpenChange],
+    [router, handleOpenChange, workspaces],
   );
 
   const onKeyDown = (event: React.KeyboardEvent) => {

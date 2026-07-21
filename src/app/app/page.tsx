@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, BookLock, Plus, Users } from "lucide-react";
 import { requireVerifiedSession, platformRoleOf } from "@/lib/session";
 import { listUserWorkspaces } from "@/lib/documents/service";
+import { workspacePath } from "@/lib/workspaces/paths";
 import { brand } from "@/config/brand";
 import { Button } from "@/components/ui/button";
 
@@ -12,7 +13,7 @@ export default async function AppHomePage() {
 
   // Straight into the only workspace (usually the personal notebook).
   if (workspaces.length === 1) {
-    redirect(`/app/${workspaces[0].id}`);
+    redirect(workspacePath(workspaces[0]));
   }
 
   const personal = workspaces.filter((w) => w.isPersonal);
@@ -35,7 +36,7 @@ export default async function AppHomePage() {
             {personal.map((ws) => (
               <li key={ws.id}>
                 <Link
-                  href={`/app/${ws.id}`}
+                  href={workspacePath(ws)}
                   className="block rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 transition-colors hover:border-[var(--primary)]"
                 >
                   <span className="font-medium">{ws.name}</span>
@@ -64,7 +65,7 @@ export default async function AppHomePage() {
             {shared.map((ws) => (
               <li key={ws.id}>
                 <Link
-                  href={`/app/${ws.id}`}
+                  href={workspacePath(ws)}
                   className="block rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 transition-colors hover:border-[var(--primary)]"
                 >
                   <span className="font-medium">{ws.name}</span>

@@ -16,11 +16,11 @@ type TrashItem = {
 };
 
 export function TrashList({
-  workspaceId,
+  workspaceSlug,
   items,
   canRestore,
 }: {
-  workspaceId: string;
+  workspaceSlug: string;
   items: TrashItem[];
   canRestore: boolean;
 }) {
@@ -67,7 +67,7 @@ export function TrashList({
           )}
           <span className="min-w-0 flex-1">
             <Link
-              href={`/app/${workspaceId}/docs/${item.id}`}
+              href={`/app/${workspaceSlug}/docs/${item.id}`}
               className="block truncate text-sm font-medium hover:text-[var(--primary)]"
             >
               {item.title || "Untitled"}
